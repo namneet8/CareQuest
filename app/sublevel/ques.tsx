@@ -86,32 +86,40 @@ export const Ques = ({
     setAnswers((a) => ({ ...a, [qid]: val }));
   };
 
-  const handleNext = async () => {
-    const val = answers[current.id];
-    if (val !== undefined) {
-      let optionId: number | undefined;
-      if (["SELECT", "YES_NO"].includes(current.type)) {
-        if (current.type === "SELECT" && typeof val === "number") optionId = val;
-        else if (current.type === "YES_NO") {
-          const o = current.questionOptions.find((o) => o.text === val);
-          optionId = o?.id;
-        }
+  // ques.tsx
+const handleNext = async () => {
+  const val = answers[current.id];
+  if (val !== undefined) {
+    let optionId: number | undefined;
+    if (["SELECT", "YES_NO"].includes(current.type)) {
+      if (current.type === "SELECT" && typeof val === "number") optionId = val;
+      else if (current.type === "YES_NO") {
+        const o = current.questionOptions.find((o) => o.text === val);
+        optionId = o?.id;
       }
-      await saveResponse(current.id, val, optionId);
     }
-    for (const c of current.children ?? []) {
-      const cv = answers[c.id];
-      if (cv !== undefined) await saveResponse(c.id, cv);
+    await saveResponse(current.id, val, optionId);
+  }
+  for (const c of current.children ?? []) {
+    const cv = answers[c.id];
+    if (cv !== undefined) await saveResponse(c.id, cv);
+  }
+  const next = activeIndex + 1;
+  if (next < qs.length) {
+    setActiveIndex(next);
+    setPercentage(Math.round(((next + 1) / qs.length) * 100));
+  } else {
+    // Mark all questions in the sublevel as completed
+    for (const q of qs) {
+      await saveResponse(q.id, answers[q.id] || "", undefined); // Save even if no answer to mark as completed
+      for (const c of q.children ?? []) {
+        await saveResponse(c.id, answers[c.id] || "", undefined);
+      }
     }
-    const next = activeIndex + 1;
-    if (next < qs.length) {
-      setActiveIndex(next);
-      setPercentage(Math.round(((next + 1) / qs.length) * 100));
-    } else {
-      setPercentage(100);
-      setShowModal(true);
-    }
-  };
+    setPercentage(100);
+    setShowModal(true);
+  }
+};
 
   const handlePrevious = () => {
     if (activeIndex === 0) return;
