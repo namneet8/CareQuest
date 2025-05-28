@@ -12,6 +12,8 @@ type Props = {
   initialPercentage: number;
   initialSublevelId: number;
   sublevelIds: number[];
+  levelId: number; // Added to identify the level
+  isCrownLevel: boolean; // Added to identify if this is the crown level
   initialSublevelQuestions: (typeof questions.$inferSelect & {
     completed: boolean;
     questionOptions: typeof questionOptions.$inferSelect[];
@@ -26,6 +28,8 @@ export const Ques = ({
   initialPercentage,
   initialSublevelId,
   sublevelIds,
+  levelId,
+  isCrownLevel,
   initialSublevelQuestions: qs,
   initialAnswers = {},
 }: Props) => {
@@ -86,40 +90,39 @@ export const Ques = ({
     setAnswers((a) => ({ ...a, [qid]: val }));
   };
 
-  // ques.tsx
-const handleNext = async () => {
-  const val = answers[current.id];
-  if (val !== undefined) {
-    let optionId: number | undefined;
-    if (["SELECT", "YES_NO"].includes(current.type)) {
-      if (current.type === "SELECT" && typeof val === "number") optionId = val;
-      else if (current.type === "YES_NO") {
-        const o = current.questionOptions.find((o) => o.text === val);
-        optionId = o?.id;
+  const handleNext = async () => {
+    const val = answers[current.id];
+    if (val !== undefined) {
+      let optionId: number | undefined;
+      if (["SELECT", "YES_NO"].includes(current.type)) {
+        if (current.type === "SELECT" && typeof val === "number") optionId = val;
+        else if (current.type === "YES_NO") {
+          const o = current.questionOptions.find((o) => o.text === val);
+          optionId = o?.id;
+        }
       }
+      await saveResponse(current.id, val, optionId);
     }
-    await saveResponse(current.id, val, optionId);
-  }
-  for (const c of current.children ?? []) {
-    const cv = answers[c.id];
-    if (cv !== undefined) await saveResponse(c.id, cv);
-  }
-  const next = activeIndex + 1;
-  if (next < qs.length) {
-    setActiveIndex(next);
-    setPercentage(Math.round(((next + 1) / qs.length) * 100));
-  } else {
-    // Mark all questions in the sublevel as completed
-    for (const q of qs) {
-      await saveResponse(q.id, answers[q.id] || "", undefined); // Save even if no answer to mark as completed
-      for (const c of q.children ?? []) {
-        await saveResponse(c.id, answers[c.id] || "", undefined);
+    for (const c of current.children ?? []) {
+      const cv = answers[c.id];
+      if (cv !== undefined) await saveResponse(c.id, cv);
+    }
+    const next = activeIndex + 1;
+    if (next < qs.length) {
+      setActiveIndex(next);
+      setPercentage(Math.round(((next + 1) / qs.length) * 100));
+    } else {
+      // Mark all questions in the sublevel as completed
+      for (const q of qs) {
+        await saveResponse(q.id, answers[q.id] || "", undefined);
+        for (const c of q.children ?? []) {
+          await saveResponse(c.id, answers[c.id] || "", undefined);
+        }
       }
+      setPercentage(100);
+      setShowModal(true);
     }
-    setPercentage(100);
-    setShowModal(true);
-  }
-};
+  };
 
   const handlePrevious = () => {
     if (activeIndex === 0) return;
@@ -133,15 +136,12 @@ const handleNext = async () => {
 
   const canProceed = () => {
     const mainAns = answers[current.id];
-    // If mandatory, ensure the main question is answered
     if (current.mandatory && (mainAns === undefined || mainAns === "")) {
       return false;
     }
-    // For YES_NO questions: once answered (Yes or No), allow proceeding—children only matter on Yes
     if (current.type === "YES_NO") {
       return mainAns !== undefined && mainAns !== "";
     }
-    // If this question has children and the answer is "yes", require all child answers
     if (
       current.children &&
       current.children.length > 0 &&
@@ -170,6 +170,30 @@ const handleNext = async () => {
     router.refresh();
   };
 
+const handleDownload = async () => {
+  try {
+    const response = await fetch(`/api/generate-report?levelId=${levelId}&sublevelId=${initialSublevelId}`);
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.error || "Failed to generate report");
+    }
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `health-report-level-${levelId}.pdf`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(url);
+    await router.push("/form");
+    router.refresh();
+  } catch (e) {
+    console.error("Download failed:", e);
+    alert(`Failed to download the report: ${e}. Please try again.`);
+  }
+};
+
   if (!current) {
     return (
       <div className="flex-1 flex items-center justify-center">
@@ -185,6 +209,12 @@ const handleNext = async () => {
     current.type === "ASSIST"
       ? "Select the Option that suits you best."
       : current.questionText;
+
+  // Determine report title based on levelId
+  const reportTitle = 
+    levelId === 1 ? "Basic Health Report" :
+    levelId === 2 ? "Intermediate Health Report" :
+    levelId === 3 ? "Complete Health Report" : "Health Report";
 
   return (
     <>
@@ -238,11 +268,26 @@ const handleNext = async () => {
       {showModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-8 shadow-lg text-center max-w-sm mx-auto">
-            <h2 className="text-2xl font-bold mb-4">Congratulations!</h2>
-            <p className="mb-6">
-              You have earned <span className="font-semibold">10 points</span>!
-            </p>
-            <Button onClick={handleContinue}>Continue</Button>
+            {isCrownLevel ? (
+              <>
+                <h2 className="text-2xl font-bold mb-4">Congratulations!</h2>
+                <p className="mb-6">
+                  Your <span className="font-semibold">{reportTitle}</span> is ready!
+                </p>
+                <div className="flex justify-center gap-4">
+                  <Button onClick={handleDownload}>Download Report</Button>
+                  <Button variant="secondary" onClick={handleContinue}>Continue</Button>
+                </div>
+              </>
+            ) : (
+              <>
+                <h2 className="text-2xl font-bold mb-4">Congratulations!</h2>
+                <p className="mb-6">
+                  You have earned <span className="font-semibold">10 points</span>!
+                </p>
+                <Button onClick={handleContinue}>Continue</Button>
+              </>
+            )}
           </div>
         </div>
       )}

@@ -1,8 +1,88 @@
 import { cache } from "react";
 import db from "@/db/drizzle";
-import { questionProgress, sublevels, userResponses, questionOptions } from "./schema";
+import { levels, sublevels, questions, questionProgress, userResponses, questionOptions } from "./schema";
 import { auth } from "@clerk/nextjs/server";
 import { eq, and } from "drizzle-orm";
+
+// db/queries.ts
+// 1) Fetch every fully completed sublevel, mapping selectedOptionId → option.text first
+export const getCompletedSublevelsWithResponses = cache(async () => {
+  const { userId } = await auth();
+  if (!userId) return [];
+
+  const all = await db.query.levels.findMany({
+    orderBy: (l, { asc }) => [asc(l.order)],
+    with: {
+      sublevel: {
+        orderBy: (s, { asc }) => [asc(s.order)],
+        with: {
+          questions: {
+            orderBy: (q, { asc }) => [asc(q.order)],
+            with: {
+              questionProgress: {
+                where: eq(questionProgress.userId, userId)
+              },
+              userResponses: {
+                where: eq(userResponses.userId, userId),
+                orderBy: (ur, { desc }) => [desc(ur.updatedAt)],
+                limit: 1
+              },
+              questionOptions: true
+            }
+          }
+        }
+      }
+    }
+  });
+
+  const completedGroups: {
+    levelTitle: string;
+    sublevelTitle: string;
+    questions: Array<{ questionText: string; responseText: string }>;
+  }[] = [];
+
+  for (const lvl of all) {
+    for (const sub of lvl.sublevel) {
+      const allDone = sub.questions.every(q =>
+        q.questionProgress.length > 0 &&
+        q.questionProgress.every(p => p.completed)
+      );
+      if (!allDone) continue;
+
+      const qs = sub.questions.map(q => {
+        const resp = q.userResponses[0];
+        let text = "";
+
+        if (resp) {
+          if (resp.responseText) {
+            // free-text answers
+            text = resp.responseText;
+          } else if (resp.selectedOptionId != null) {
+            // SELECT / YES_NO → lookup option text first
+            const opt = q.questionOptions.find(o => o.id === resp.selectedOptionId);
+            text = opt?.text ?? String(resp.selectedOptionId);
+          } else if (resp.responseNumber != null) {
+            // numeric/rating answers
+            text = String(resp.responseNumber);
+          }
+        }
+
+        return {
+          questionText: q.questionText,
+          responseText: text
+        };
+      });
+
+      completedGroups.push({
+        levelTitle: lvl.title,
+        sublevelTitle: sub.title,
+        questions: qs
+      });
+    }
+  }
+
+  return completedGroups;
+});
 
 export const getLevels = cache(async () => {
   const {userId} = await auth();
@@ -258,50 +338,39 @@ export const saveUserResponse = async (
   }
 };
 
-// Function to get user's previous responses for a sublevel
 export const getUserResponses = async (sublevelId: number) => {
   const { userId } = await auth();
-  
-  if (!userId) {
-    return {};
-  }
+  if (!userId) return {};
 
   const sublevel = await getSublevel(sublevelId);
-  if (!sublevel) {
-    return {};
-  }
+  if (!sublevel) return {};
 
   const responses: Record<number, string | number> = {};
-  
-  sublevel.questions.forEach((question) => {
-    if (question.userResponse) {
-      if (question.userResponse.responseText) {
-        responses[question.id] = question.userResponse.responseText;
-      } else if (question.userResponse.responseNumber !== null) {
-        responses[question.id] = question.userResponse.responseNumber;
-      } else if (question.userResponse.selectedOptionId) {
-        // For SELECT questions, we might want to return the option ID or text
-        const selectedOption = question.questionOptions.find(
-          opt => opt.id === question.userResponse?.selectedOptionId
-        );
-        responses[question.id] = selectedOption?.text || question.userResponse.selectedOptionId;
+
+  for (const question of sublevel.questions) {
+    const r = question.userResponse;
+    if (r) {
+      if (r.responseText) {
+        responses[question.id] = r.responseText;
+      } else if (r.selectedOptionId != null) {
+        const opt = question.questionOptions.find(o => o.id === r.selectedOptionId);
+        responses[question.id] = opt?.text ?? r.selectedOptionId;
+      } else if (r.responseNumber != null) {
+        responses[question.id] = r.responseNumber;
       }
     }
-    
-    // Also get responses for child questions
-    if (question.children) {
-      question.children.forEach((child) => {
-        if (child.userResponse) {
-          if (child.userResponse.responseText) {
-            responses[child.id] = child.userResponse.responseText;
-          } else if (child.userResponse.responseNumber !== null) {
-            responses[child.id] = child.userResponse.responseNumber;
-          }
+    // children too
+    for (const child of question.children ?? []) {
+      const cr = child.userResponse;
+      if (cr) {
+        if (cr.responseText) {
+          responses[child.id] = cr.responseText;
+        } else if (cr.responseNumber != null) {
+          responses[child.id] = cr.responseNumber;
         }
-      });
+      }
     }
-  });
+  }
 
   return responses;
 };
-

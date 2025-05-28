@@ -22,14 +22,11 @@ export default async function SublevelPage() {
   const totalQuestions = sublevel.questions.length;
   
   for (const question of sublevel.questions) {
-    // Check if question has any response
     const hasResponse = question.userResponse && (
       question.userResponse.responseText ||
       question.userResponse.responseNumber !== null ||
       question.userResponse.selectedOptionId
     );
-    
-    // Also check if marked as completed
     if (hasResponse || question.completed) {
       answeredCount++;
     }
@@ -38,12 +35,23 @@ export default async function SublevelPage() {
   const initialPercentage = totalQuestions > 0 ? 
     Math.round((answeredCount / totalQuestions) * 100) : 0;
 
+  // Find the level and determine if this is the crown level
+  const currentLevel = levels.find((lvl) =>
+    lvl.sublevel.some((sub) => sub.id === sublevel.id)
+  );
+  const levelId = currentLevel?.id || 1; // Fallback to 1 if not found
+  const isCrownLevel = currentLevel
+    ? sublevel.order === Math.max(...currentLevel.sublevel.map(s => s.order))
+    : false;
+
   return (
     <Ques
       initialSublevelId={sublevel.id}
       sublevelIds={sublevelIds}
       initialSublevelQuestions={sublevel.questions}
       initialPercentage={initialPercentage}
+      levelId={levelId}
+      isCrownLevel={isCrownLevel}
     />
   );
 }
