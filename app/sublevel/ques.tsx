@@ -2,18 +2,22 @@
 
 import { questionOptions, questions } from "@/db/schema";
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { Header } from "./header";
 import { QuestionBubble } from "./question-bubble";
 import { Question } from "./question";
+import { Button } from "@/components/ui/button";
 
 type Props = {
-  initialPercentage: number,
-  initialSublevelId: number,
+  initialPercentage: number;
+  initialSublevelId: number;
+  sublevelIds: number[];
   initialSublevelQuestions: (typeof questions.$inferSelect & {
     completed: boolean;
     questionOptions: typeof questionOptions.$inferSelect[];
     children?: any[];
     userResponse?: any;
+    type: string;
   })[];
   initialAnswers?: Record<number, string | number>;
 };
@@ -21,284 +25,222 @@ type Props = {
 export const Ques = ({
   initialPercentage,
   initialSublevelId,
-  initialSublevelQuestions,
+  sublevelIds,
+  initialSublevelQuestions: qs,
   initialAnswers = {},
 }: Props) => {
+  const router = useRouter();
+
+  // State
   const [percentage, setPercentage] = useState(initialPercentage);
-  const [answers, setAnswers] = useState<Record<number, string | number>>(initialAnswers);
+  const [answers, setAnswers] = useState({ ...initialAnswers });
   const [activeIndex, setActiveIndex] = useState(0);
   const [saving, setSaving] = useState(false);
-  const questions = initialSublevelQuestions;
+  const [showModal, setShowModal] = useState(false);
 
-  const currentQuestion = questions[activeIndex];
-  const options = currentQuestion?.questionOptions ?? [];
-  const title =
-    currentQuestion.type === "ASSIST"
-      ? "Select the Option that suits you the best."
-      : currentQuestion.questionText;
+  const current = qs[activeIndex];
 
-  // Load previous answers on component mount
+  // Merge saved responses on mount
   useEffect(() => {
-    const loadPreviousAnswers = () => {
-      const previousAnswers: Record<number, string | number> = {};
-      
-      questions.forEach((question) => {
-        if (question.userResponse) {
-          if (question.userResponse.responseText) {
-            previousAnswers[question.id] = question.userResponse.responseText;
-          } else if (question.userResponse.responseNumber !== null) {
-            previousAnswers[question.id] = question.userResponse.responseNumber;
-          } else if (question.userResponse.selectedOptionId) {
-            const selectedOption = question.questionOptions.find(
-              opt => opt.id === question.userResponse?.selectedOptionId
-            );
-            previousAnswers[question.id] = selectedOption?.text || question.userResponse.selectedOptionId;
-          }
+    const loaded: Record<number, string | number> = {};
+    for (const q of qs) {
+      if (q.userResponse) {
+        if (q.userResponse.responseText) loaded[q.id] = q.userResponse.responseText;
+        else if (q.userResponse.responseNumber !== null) loaded[q.id] = q.userResponse.responseNumber;
+        else if (q.userResponse.selectedOptionId) {
+          const o = q.questionOptions.find((o) => o.id === q.userResponse!.selectedOptionId);
+          loaded[q.id] = o?.text ?? q.userResponse!.selectedOptionId;
         }
-        
-        // Load answers for child questions
-        if (question.children) {
-          question.children.forEach((child: any) => {
-            if (child.userResponse) {
-              if (child.userResponse.responseText) {
-                previousAnswers[child.id] = child.userResponse.responseText;
-              } else if (child.userResponse.responseNumber !== null) {
-                previousAnswers[child.id] = child.userResponse.responseNumber;
-              }
-            }
-          });
-        }
-      });
-      
-      setAnswers(prevAnswers => ({ ...prevAnswers, ...previousAnswers }));
-    };
-
-    loadPreviousAnswers();
-  }, [questions]);
-
-  const saveResponse = async (questionId: number, response: string | number, optionId?: number) => {
-    try {
-      setSaving(true);
-      const res = await fetch('/api/responses', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          questionId,
-          response,
-          optionId,
-        }),
-      });
-
-      if (!res.ok) {
-        throw new Error('Failed to save response');
       }
+      for (const c of q.children ?? []) {
+        if (c.userResponse) {
+          if (c.userResponse.responseText) loaded[c.id] = c.userResponse.responseText;
+          else if (c.userResponse.responseNumber !== null) loaded[c.id] = c.userResponse.responseNumber;
+        }
+      }
+    }
+    setAnswers((a) => ({ ...a, ...loaded }));
+  }, [qs]);
 
-      return true;
-    } catch (error) {
-      console.error('Error saving response:', error);
-      return false;
+  const saveResponse = async (
+    questionId: number,
+    response: string | number,
+    optionId?: number
+  ) => {
+    setSaving(true);
+    try {
+      const res = await fetch("/api/responses", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ questionId, response, optionId }),
+      });
+      if (!res.ok) throw new Error("Save failed");
+    } catch (e) {
+      console.error(e);
     } finally {
       setSaving(false);
     }
   };
 
-  const handleAnswer = async (questionId: number, value: string | number) => {
-    setAnswers((prev) => ({
-      ...prev,
-      [questionId]: value,
-    }));
+  const handleAnswer = (qid: number, val: string | number) => {
+    setAnswers((a) => ({ ...a, [qid]: val }));
+  };
 
-    // Determine optionId for SELECT type questions
-    const question = questions.find(q => q.id === questionId);
-    let optionId: number | undefined;
-    
-    if (question && ["SELECT", "YES_NO"].includes(question.type)) {
-      if (question.type === "SELECT") {
-        optionId = typeof value === 'number' ? value : undefined;
-      } else if (question.type === "YES_NO") {
-        // For YES_NO, we need to find the option that matches the text
-        const option = question.questionOptions.find(opt => opt.text === value);
-        optionId = option?.id;
+  const handleNext = async () => {
+    const val = answers[current.id];
+    if (val !== undefined) {
+      let optionId: number | undefined;
+      if (["SELECT", "YES_NO"].includes(current.type)) {
+        if (current.type === "SELECT" && typeof val === "number") optionId = val;
+        else if (current.type === "YES_NO") {
+          const o = current.questionOptions.find((o) => o.text === val);
+          optionId = o?.id;
+        }
       }
+      await saveResponse(current.id, val, optionId);
     }
-
-    // Save to database
-    await saveResponse(questionId, value, optionId);
-  };
-
-  const handleNext = () => {
-    const nextIndex = activeIndex + 1;
-    if (nextIndex < questions.length) {
-      setActiveIndex(nextIndex);
-      // Update percentage based on progress
-      setPercentage(Math.round(((nextIndex + 1) / questions.length) * 100));
+    for (const c of current.children ?? []) {
+      const cv = answers[c.id];
+      if (cv !== undefined) await saveResponse(c.id, cv);
+    }
+    const next = activeIndex + 1;
+    if (next < qs.length) {
+      setActiveIndex(next);
+      setPercentage(Math.round(((next + 1) / qs.length) * 100));
     } else {
-      // All questions completed
-      console.log("All answers:", answers);
-      // You can handle completion here (e.g., submit to server)
+      setPercentage(100);
+      setShowModal(true);
     }
   };
 
-  const shouldShowChild = (child: any) => {
-    const parentAnswer = answers[child.parentQuestionId];
-    return parentAnswer && parentAnswer.toString().toLowerCase() === "yes";
+  const handlePrevious = () => {
+    if (activeIndex === 0) return;
+    const prev = activeIndex - 1;
+    setActiveIndex(prev);
+    setPercentage(Math.round(((prev + 1) / qs.length) * 100));
   };
+
+  const shouldShowChild = (child: any) =>
+    answers[child.parentQuestionId]?.toString().toLowerCase() === "yes";
 
   const canProceed = () => {
-    const currentAnswer = answers[currentQuestion.id];
-    
-    // For mandatory questions, require an answer
-    if (currentQuestion.mandatory && !currentAnswer) {
+    const mainAns = answers[current.id];
+    // If mandatory, ensure the main question is answered
+    if (current.mandatory && (mainAns === undefined || mainAns === "")) {
       return false;
     }
-    
-    // For subquestions, check if they need answers too
-    if (currentQuestion.children) {
-      for (const child of currentQuestion.children) {
-        if (shouldShowChild(child) && !answers[child.id]) {
+    // For YES_NO questions: once answered (Yes or No), allow proceeding—children only matter on Yes
+    if (current.type === "YES_NO") {
+      return mainAns !== undefined && mainAns !== "";
+    }
+    // If this question has children and the answer is "yes", require all child answers
+    if (
+      current.children &&
+      current.children.length > 0 &&
+      answers[current.id]?.toString().toLowerCase() === "yes"
+    ) {
+      for (const c of current.children) {
+        const childAns = answers[c.id];
+        if (childAns === undefined || childAns === "") {
           return false;
         }
       }
     }
-    
     return true;
   };
 
   const handleSkip = () => {
-    if (!currentQuestion.mandatory) {
-      if (currentQuestion.importanceDescription) {
-        const proceed = window.confirm(
-          `${currentQuestion.importanceDescription}\n\nAre you sure you want to skip this question?`
-        );
-        if (proceed) {
-          handleNext();
-        }
-      } else {
-        handleNext();
-      }
+    if (!current.mandatory) {
+      if (current.importanceDescription && !confirm(`${current.importanceDescription}\n\nSkip?`)) return;
+      handleNext();
     }
   };
 
-  if (!currentQuestion) {
+  const handleContinue = async () => {
+    setShowModal(false);
+    await router.push("/form");
+    router.refresh();
+  };
+
+  if (!current) {
     return (
       <div className="flex-1 flex items-center justify-center">
         <div className="text-center">
-          <h2 className="text-2xl font-bold mb-4">Questions Completed!</h2>
+          <h2 className="text-2xl font-bold mb-4">All Done!</h2>
           <p>Thank you for completing all questions.</p>
         </div>
       </div>
     );
   }
 
+  const title =
+    current.type === "ASSIST"
+      ? "Select the Option that suits you best."
+      : current.questionText;
+
   return (
     <>
       <Header percentage={percentage} />
-      <div className="flex-1">
-        <div className="h-full flex items-center justify-center">
-          <div className="lg:min-h-[350px] lg:w-[600px] w-full px-6 lg:px-0 flex flex-col gap-y-12">
-            <div className="flex justify-between items-center">
-              <h1 className="text-lg lg:text-3xl text-center lg:text-start font-bold text-neutral-700">
-                {title}
-              </h1>
-              <span className="text-sm text-gray-500">
-                {activeIndex + 1} of {questions.length}
-              </span>
-            </div>
-            
-            <div>
-              {currentQuestion.type === "ASSIST" && (
-                <QuestionBubble question={currentQuestion.questionText} />
-              )}
 
-              <Question
-                options={options}
-                onSelect={async (value) => {
-                  await handleAnswer(currentQuestion.id, value);
-                  
-                  // Auto-advance for certain question types
-                  if (["SELECT", "YES_NO", "RATE"].includes(currentQuestion.type)) {
-                    setTimeout(() => {
-                      if (canProceed()) {
-                        handleNext();
-                      }
-                    }, 500); // Slightly longer delay to ensure save completes
-                  }
-                }}
-                selectedOption={answers[currentQuestion.id]}
-                disabled={saving}
-                type={currentQuestion.type}
-              />
+      <div className="mt-8 flex-1 flex items-start justify-center">
+        <div className="lg:min-h-[350px] lg:w-[600px] w-full px-6 lg:px-0 flex flex-col gap-y-8">
+          <div className="text-center">
+            <h1 className="text-2xl lg:text-3xl font-bold mb-1">{title}</h1>
+            <span className="text-sm text-gray-500">{activeIndex + 1} of {qs.length}</span>
+          </div>
 
-              {/* Render subquestions if applicable */}
-              {currentQuestion.children &&
-                currentQuestion.children.map((child: any) =>
-                  shouldShowChild(child) && (
-                    <div className="mt-6 p-4 bg-gray-50 rounded-lg" key={child.id}>
-                      <p className="text-sm font-semibold mb-2">{child.questionText}</p>
-                      <input
-                        className="mt-2 p-2 border rounded w-full"
-                        type="text"
-                        placeholder="Enter your response"
-                        value={answers[child.id] || ""}
-                        onChange={async (e) => {
-                          await handleAnswer(child.id, e.target.value);
-                        }}
-                      />
-                    </div>
-                  )
-                )}
+          {current.type === "ASSIST" && (
+            <QuestionBubble question={current.questionText} />
+          )}
 
-              <div className="flex justify-between items-center mt-6">
-                <div>
-                  {!currentQuestion.mandatory && (
-                    <button
-                      className="text-blue-600 hover:text-blue-800 underline"
-                      onClick={handleSkip}
-                    >
-                      Skip this question
-                    </button>
-                  )}
-                </div>
-                
-                <div className="flex gap-2">
-                  {activeIndex > 0 && (
-                    <button
-                      className="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded transition-colors"
-                      onClick={() => {
-                        setActiveIndex(activeIndex - 1);
-                        setPercentage(Math.round((activeIndex / questions.length) * 100));
-                      }}
-                    >
-                      Previous
-                    </button>
-                  )}
-                  
-                  {/* Show Next button for manual progression types or when auto-advance conditions aren't met */}
-                  {(["FILL", "TEXT", "DATE", "ASSIST"].includes(currentQuestion.type) || 
-                    !canProceed()) && (
-                    <button
-                      className={`px-4 py-2 rounded transition-colors flex items-center gap-2 ${
-                        canProceed() && !saving
-                          ? "bg-blue-500 hover:bg-blue-600 text-white"
-                          : "bg-gray-300 text-gray-500 cursor-not-allowed"
-                      }`}
-                      onClick={handleNext}
-                      disabled={!canProceed() || saving}
-                    >
-                      {saving && (
-                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                      )}
-                      {activeIndex === questions.length - 1 ? "Complete" : "Next"}
-                    </button>
-                  )}
-                </div>
+          <Question
+            options={current.questionOptions}
+            type={current.type}
+            disabled={saving}
+            selectedOption={answers[current.id]}
+            onSelect={(v) => handleAnswer(current.id, v)}
+          />
+
+          {current.children?.map((child: any) =>
+            shouldShowChild(child) ? (
+              <div key={child.id} className="mt-6 p-4 bg-gray-50 rounded-lg">
+                <p className="text-sm font-semibold mb-2">{child.questionText}</p>
+                <input
+                  className="mt-2 p-2 border rounded w-full"
+                  placeholder="Enter your response"
+                  value={answers[child.id] || ""}
+                  onChange={(e) => setAnswers(a => ({ ...a, [child.id]: e.target.value }))}
+                />
               </div>
-            </div>
+            ) : null
+          )}
+
+          <div className="flex justify-center items-center gap-4 mt-6">
+            {!current.mandatory && (
+              <Button variant="danger" onClick={handleSkip}>Skip</Button>
+            )}
+            <Button variant="secondary" onClick={handlePrevious} disabled={activeIndex === 0}>Previous</Button>
+            <Button onClick={handleNext} disabled={!canProceed() || saving}>
+              {saving ? "Saving…" : activeIndex === qs.length - 1 ? "Complete" : "Next"}
+            </Button>
           </div>
         </div>
       </div>
+
+      {showModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-8 shadow-lg text-center max-w-sm mx-auto">
+            <h2 className="text-2xl font-bold mb-4">Congratulations!</h2>
+            <p className="mb-6">
+              You have earned <span className="font-semibold">10 points</span>!
+            </p>
+            <Button onClick={handleContinue}>Continue</Button>
+          </div>
+        </div>
+      )}
     </>
   );
 };
+
+
+

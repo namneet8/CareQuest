@@ -43,6 +43,12 @@ const main = async () => {
         description: "Basic Health Card",
         order: 1,
       },
+      {
+        id: 2,
+        title: "Level 2",
+        description: "Intermediate Health Card",
+        order: 2,
+      },
     ]);
 
     // Insert sublevels
