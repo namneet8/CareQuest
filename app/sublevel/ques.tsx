@@ -7,13 +7,15 @@ import { Header } from "./header";
 import { QuestionBubble } from "./question-bubble";
 import { Question } from "./question";
 import { Button } from "@/components/ui/button";
+import { createPortal } from "react-dom";
+import Image from "next/image";
 
 type Props = {
   initialPercentage: number;
   initialSublevelId: number;
   sublevelIds: number[];
-  levelId: number; // Added to identify the level
-  isCrownLevel: boolean; // Added to identify if this is the crown level
+  levelId: number;
+  isCrownLevel: boolean;
   initialSublevelQuestions: (typeof questions.$inferSelect & {
     completed: boolean;
     questionOptions: typeof questionOptions.$inferSelect[];
@@ -42,8 +44,33 @@ export const Ques = ({
   const [saving, setSaving] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [spinsEarned, setSpinsEarned] = useState(0);
+  const [mounted, setMounted] = useState(false);
+  const [encouragingMessage, setEncouragingMessage] = useState("");
 
   const current = qs[activeIndex];
+
+  // Encouraging messages for non-crown levels
+  const encouragingMessages = [
+    "Great job! You're one step closer to unlocking your full health report!",
+    "Awesome progress! Keep going to complete all levels and earn more rewards!",
+    "You're doing fantastic! Just a few more levels to reach development!",
+    "Well done! Continue crushing it to reach the final level!",
+  ];
+
+  // Handle body scroll for modal and set random encouraging message
+  useEffect(() => {
+    setMounted(true);
+    if (showModal && !isCrownLevel) {
+      const randomIndex = Math.floor(Math.random() * encouragingMessages.length);
+      setEncouragingMessage(encouragingMessages[randomIndex]);
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "unset";
+    }
+    return () => {
+      document.body.style.overflow = "unset";
+    };
+  }, [showModal, isCrownLevel]);
 
   // Merge saved responses on mount
   useEffect(() => {
@@ -87,97 +114,80 @@ export const Ques = ({
     }
   };
 
-const updateUserPoints = async (pointsToAdd: number) => {
-  console.log("🎯 Attempting to update points:", pointsToAdd);
-  
-  try {
-    const res = await fetch("/api/update-points", {
-      method: "POST",
-      headers: { 
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ points: pointsToAdd }),
-    });
+  const updateUserPoints = async (pointsToAdd: number) => {
+    console.log("🎯 Attempting to update points:", pointsToAdd);
+    try {
+      const res = await fetch("/api/update-points", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ points: pointsToAdd }),
+      });
+      console.log("📡 Response status:", res.status);
+      console.log("📡 Response ok:", res.ok);
+      if (!res.ok) {
+        const errorText = await res.text();
+        console.error("❌ Update points failed:", res.status, errorText);
+        throw new Error(`Failed to update points: ${res.status} - ${errorText}`);
+      }
+      const data = await res.json();
+      console.log("✅ Points updated successfully:", data);
+      if (data.spinsEarned > 0) {
+        setSpinsEarned(data.spinsEarned);
+      }
+      return {
+        newPoints: data.newPoints,
+        spinsEarned: data.spinsEarned,
+      };
+    } catch (e) {
+      console.error("❌ Failed to update points:", e);
+      return null;
+    }
+  };
 
-    console.log("📡 Response status:", res.status);
-    console.log("📡 Response ok:", res.ok);
-    
-    if (!res.ok) {
-      const errorText = await res.text();
-      console.error("❌ Update points failed:", res.status, errorText);
-      throw new Error(`Failed to update points: ${res.status} - ${errorText}`);
+  const handleNext = async () => {
+    const val = answers[current.id];
+    if (val !== undefined) {
+      let optionId: number | undefined;
+      if (["SELECT", "YES_NO"].includes(current.type)) {
+        if (current.type === "SELECT" && typeof val === "number") optionId = val;
+        else if (current.type === "YES_NO") {
+          const o = current.questionOptions.find((o) => o.text === val);
+          optionId = o?.id;
+        }
+      }
+      await saveResponse(current.id, val, optionId);
     }
-    
-    const data = await res.json();
-    console.log("✅ Points updated successfully:", data);
-    
-    // Set spins earned for modal display
-    if (data.spinsEarned > 0) {
-      setSpinsEarned(data.spinsEarned);
-    }
-    
-    return {
-      newPoints: data.newPoints,
-      spinsEarned: data.spinsEarned
-    };
-  } catch (e) {
-    console.error("❌ Failed to update points:", e);
-    // Don't throw the error, just log it and return null
-    // This prevents the UI from breaking if points update fails
-    return null;
-  }
-};
 
-// Updated handleNext function with better error handling
-const handleNext = async () => {
-  const val = answers[current.id];
-  if (val !== undefined) {
-    let optionId: number | undefined;
-    if (["SELECT", "YES_NO"].includes(current.type)) {
-      if (current.type === "SELECT" && typeof val === "number") optionId = val;
-      else if (current.type === "YES_NO") {
-        const o = current.questionOptions.find((o) => o.text === val);
-        optionId = o?.id;
-      }
+    for (const c of current.children ?? []) {
+      const cv = answers[c.id];
+      if (cv !== undefined) await saveResponse(c.id, cv);
     }
-    await saveResponse(current.id, val, optionId);
-  }
-  
-  for (const c of current.children ?? []) {
-    const cv = answers[c.id];
-    if (cv !== undefined) await saveResponse(c.id, cv);
-  }
-  
-  const next = activeIndex + 1;
-  if (next < qs.length) {
-    setActiveIndex(next);
-    setPercentage(Math.round(((next + 1) / qs.length) * 100));
-  } else {
-    // Mark all questions in the sublevel as completed
-    for (const q of qs) {
-      await saveResponse(q.id, answers[q.id] || "", undefined);
-      for (const c of q.children ?? []) {
-        await saveResponse(c.id, answers[c.id] || "", undefined);
-      }
-    }
-    
-    // Award points for completing the sublevel
-    console.log("🏆 Sublevel completed, awarding points...");
-    const result = await updateUserPoints(20);
-    
-    if (result !== null) {
-      console.log("✅ Points awarded successfully. New total:", result.newPoints);
-      if (result.spinsEarned > 0) {
-        console.log("🎰 Spins earned:", result.spinsEarned);
-      }
+
+    const next = activeIndex + 1;
+    if (next < qs.length) {
+      setActiveIndex(next);
+      setPercentage(Math.round(((next + 1) / qs.length) * 100));
     } else {
-      console.log("⚠️ Points update failed, but continuing...");
+      for (const q of qs) {
+        await saveResponse(q.id, answers[q.id] || "", undefined);
+        for (const c of q.children ?? []) {
+          await saveResponse(c.id, answers[c.id] || "", undefined);
+        }
+      }
+      console.log("🏆 Sublevel completed, awarding points...");
+      const result = await updateUserPoints(20);
+      if (result !== null) {
+        console.log("✅ Points awarded successfully. New total:", result.newPoints);
+        if (result.spinsEarned > 0) {
+          console.log("🎰 Spins earned:", result.spinsEarned);
+        }
+      } else {
+        console.log("⚠️ Points update failed, but continuing...");
+      }
+      setPercentage(100);
+      setShowModal(true);
     }
-    
-    setPercentage(100);
-    setShowModal(true);
-  }
-};
+  };
 
   const handleAnswer = (qid: number, val: string | number) => {
     setAnswers((a) => ({ ...a, [qid]: val }));
@@ -211,8 +221,8 @@ const handleNext = async () => {
         if (childAns === undefined || childAns === "") {
           return false;
         }
+        }
       }
-    }
     return true;
   };
 
@@ -225,11 +235,10 @@ const handleNext = async () => {
 
   const handleContinue = async () => {
     setShowModal(false);
-    setSpinsEarned(0); // Reset spins earned
+    setSpinsEarned(0);
     await router.push("/form");
     router.refresh();
   };
-
 
   const handleDownload = async () => {
     try {
@@ -272,27 +281,112 @@ const handleNext = async () => {
     );
   }
 
-  if (!current) {
-    return (
-      <div className="flex-1 flex items-center justify-center">
-        <div className="text-center">
-          <h2 className="text-2xl font-bold mb-4">All Done!</h2>
-          <p>Thank you for completing all questions.</p>
-        </div>
-      </div>
-    );
-  }
-
   const title =
     current.type === "ASSIST"
       ? "Select the Option that suits you best."
       : current.questionText;
 
-  // Determine report title based on levelId
-  const reportTitle = 
+  const reportTitle =
     levelId === 1 ? "Basic Health Report" :
     levelId === 2 ? "Intermediate Health Report" :
     levelId === 3 ? "Complete Health Report" : "Health Report";
+
+  const modalContent = (
+    <div
+      className="fixed inset-0 flex items-center justify-center"
+      style={{ zIndex: 9999 }}
+    >
+      {/* Backdrop */}
+      <div
+        className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+        onClick={() => setShowModal(false)}
+      />
+      
+      {/* Modal Content */}
+      <div className="relative bg-white rounded-2xl shadow-2xl p-8 mx-4 max-w-md w-full animate-in zoom-in-95 duration-300">
+        {/* Close Button */}
+        <button
+          onClick={() => setShowModal(false)}
+          className="absolute top-4 right-4 text-gray-500 hover:text-gray-700 text-xl font-bold w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 transition-colors"
+        >
+          ×
+        </button>
+
+        {/* Content */}
+        <div className="text-center">
+          {/* Celebration Icon */}
+          <div className="mb-4">
+            <div className="text-6xl">🎉</div>
+          </div>
+
+          {/* Reward Image */}
+          <div className="mb-6 flex justify-center">
+            <div className="relative">
+              <Image
+                src={isCrownLevel ? "/report-icon.png" : "/points-icon.png"}
+                width={120}
+                height={120}
+                alt={isCrownLevel ? "Health Report" : "Points Earned"}
+                className="rounded-xl shadow-lg"
+                onError={(e) => {
+                  e.currentTarget.src = "/reward-generic.png";
+                }}
+              />
+              <div className="absolute -top-2 -right-2 text-2xl animate-bounce">✨</div>
+              <div className="absolute -bottom-2 -left-2 text-2xl animate-bounce delay-150">🌟</div>
+            </div>
+          </div>
+
+          {/* Title */}
+          <h2 className="text-2xl font-bold text-gray-800 mb-2">
+            Congratulations!
+          </h2>
+
+          {/* Description */}
+          <p className="text-gray-600 mb-6 text-lg">
+            {isCrownLevel
+              ? `Your ${reportTitle} is ready!`
+              : encouragingMessage}
+          </p>
+
+          {/* Points/Spins Info */}
+          {!isCrownLevel && (
+            <div className="mb-4 p-3 bg-blue-50 rounded-lg">
+              <p className="text-blue-700 font-semibold">
+                You have earned <span className="font-bold">20 points</span>!
+              </p>
+            </div>
+          )}
+          {spinsEarned > 0 && (
+            <div className="mb-4 p-3 bg-blue-50 rounded-lg">
+              <p className="text-blue-700 font-semibold">
+                🎰 Bonus: You earned {spinsEarned} spin{spinsEarned > 1 ? "s" : ""}!
+              </p>
+            </div>
+          )}
+
+          {/* Action Buttons */}
+          <div className="space-y-3">
+            {isCrownLevel && (
+              <Button
+                className="w-full bg-orange-500 hover:bg-orange-600 text-white font-semibold py-3 text-lg"
+                onClick={handleDownload}
+              >
+                Download Report
+              </Button>
+            )}
+            <Button
+              variant="primary"
+              onClick={handleContinue}
+              className="w-full border-gray-300 text-gray-700 hover:bg-gray-50 font-semibold py-3"
+            >
+              Continue
+            </Button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 
   return (
     <>
@@ -301,11 +395,12 @@ const handleNext = async () => {
       <div className="mt-8 flex-1 flex items-start justify-center">
         <div className="lg:min-h-[350px] lg:w-[600px] w-full px-6 lg:px-0 flex flex-col gap-y-8">
           <div className="text-center">
-            {current.type !== null  && (
-            <QuestionBubble question={current.questionText} />
-          )}
-            {/* <h1 className="text-2xl lg:text-3xl font-bold mb-1">{title}</h1> */}
-            <span className="text-sm text-gray-500">{activeIndex + 1} of {qs.length}</span>
+            {current.type !== null && (
+              <QuestionBubble question={current.questionText} />
+            )}
+            <span className="text-sm text-gray-500">
+              {activeIndex + 1} of {qs.length}
+            </span>
           </div>
 
           <Question
@@ -324,7 +419,7 @@ const handleNext = async () => {
                   className="mt-2 p-2 border rounded w-full"
                   placeholder="Enter your response"
                   value={answers[child.id] || ""}
-                  onChange={(e) => setAnswers(a => ({ ...a, [child.id]: e.target.value }))}
+                  onChange={(e) => setAnswers((a) => ({ ...a, [child.id]: e.target.value }))}
                 />
               </div>
             ) : null
@@ -332,9 +427,17 @@ const handleNext = async () => {
 
           <div className="flex justify-center items-center gap-4 mt-6">
             {!current.mandatory && (
-              <Button variant="danger" onClick={handleSkip}>Skip</Button>
+              <Button variant="danger" onClick={handleSkip}>
+                Skip
+              </Button>
             )}
-            <Button variant="secondary" onClick={handlePrevious} disabled={activeIndex === 0}>Previous</Button>
+            <Button
+              variant="secondary"
+              onClick={handlePrevious}
+              disabled={activeIndex === 0}
+            >
+              Previous
+            </Button>
             <Button onClick={handleNext} disabled={!canProceed() || saving}>
               {saving ? "Saving…" : activeIndex === qs.length - 1 ? "Complete" : "Next"}
             </Button>
@@ -342,46 +445,7 @@ const handleNext = async () => {
         </div>
       </div>
 
-      {showModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-8 shadow-lg text-center max-w-sm mx-auto">
-            {isCrownLevel ? (
-              <>
-                <h2 className="text-2xl font-bold mb-4">Congratulations!</h2>
-                <p className="mb-6">
-                  Your <span className="font-semibold">{reportTitle}</span> is ready!
-                </p>
-                {spinsEarned > 0 && (
-                  <div className="mb-4 p-3 bg-blue-50 rounded-lg">
-                    <p className="text-blue-700 font-semibold">
-                      🎰 Bonus: You earned {spinsEarned} spin{spinsEarned > 1 ? 's' : ''}!
-                    </p>
-                  </div>
-                )}
-                <div className="flex justify-center gap-4">
-                  <Button onClick={handleDownload}>Download Report</Button>
-                  <Button variant="secondary" onClick={handleContinue}>Continue</Button>
-                </div>
-              </>
-            ) : (
-              <>
-                <h2 className="text-2xl font-bold mb-4">Congratulations!</h2>
-                <p className="mb-4">
-                  You have earned <span className="font-semibold">20 points</span>!
-                </p>
-                {spinsEarned > 0 && (
-                  <div className="mb-4 p-3 bg-blue-50 rounded-lg">
-                    <p className="text-blue-700 font-semibold">
-                      🎰 Bonus: You earned {spinsEarned} spin{spinsEarned > 1 ? 's' : ''}!
-                    </p>
-                  </div>
-                )}
-                <Button onClick={handleContinue}>Continue</Button>
-              </>
-            )}
-          </div>
-        </div>
-      )}
+      {mounted && showModal && createPortal(modalContent, document.body)}
     </>
   );
 };
