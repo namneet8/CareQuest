@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import Image from "next/image";
 import { SpinWheelModal } from "./spinwheel-modal";
+import { RewardModal } from "./reward-modal";
 
 interface Props {
   activeLevel: { title: string };
@@ -21,43 +22,59 @@ export const UserProgress = ({
 }: Props) => {
   const pointsToNextSpin = 100 - (points % 100);
   const progressPercentage = ((points % 100) / 100) * 100;
-  const isSpinAvailable = spins > 0; // Simplified condition - user can spin if they have spins
+  const isSpinAvailable = spins > 0;
 
-  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isSpinModalOpen, setIsSpinModalOpen] = useState(false);
+  const [isRewardModalOpen, setIsRewardModalOpen] = useState(false);
+  const [currentReward, setCurrentReward] = useState<string>("");
 
-  const handleOpenModal = () => {
+  const handleOpenSpinModal = () => {
     if (isSpinAvailable) {
-      setIsModalOpen(true);
+      setIsSpinModalOpen(true);
     }
   };
 
   const handleReward = async (reward: string) => {
-    setIsModalOpen(false);
+    setIsSpinModalOpen(false);
+    setCurrentReward(reward);
+    
+    // If user gets "Try Again", don't show reward modal and don't deduct spin
+    if (reward.toLowerCase().includes("try again")) {
+      alert("Better luck next time!");
+      return;
+    }
+
+    // Show reward modal for actual rewards
+    setIsRewardModalOpen(true);
     
     // TODO: Implement backend logic to deduct spin and save reward
     try {
-      // Example API call to deduct spin
+      // Example API call to deduct spin and save reward
       const response = await fetch("/api/use-spin", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ reward }),
       });
       
-      if (response.ok) {
-        alert(`Congrats! You've won: ${reward}`);
-        // Refresh the page to update spin count
-        window.location.reload();
-      } else {
-        alert("Something went wrong. Please try again.");
+      if (!response.ok) {
+        console.error("Failed to process reward");
+        // Still show the reward modal even if backend fails
       }
     } catch (error) {
       console.error("Error using spin:", error);
-      alert("Something went wrong. Please try again.");
+      // Still show the reward modal even if backend fails
     }
   };
 
-  const handleCloseModal = () => {
-    setIsModalOpen(false);
+  const handleCloseSpinModal = () => {
+    setIsSpinModalOpen(false);
+  };
+
+  const handleCloseRewardModal = () => {
+    setIsRewardModalOpen(false);
+    setCurrentReward("");
+    // Refresh the page to update spin count after reward modal closes
+    window.location.reload();
   };
 
   return (
@@ -92,7 +109,7 @@ export const UserProgress = ({
         <div className="flex flex-col items-center mt-4">
           <button
             disabled={!isSpinAvailable}
-            onClick={handleOpenModal}
+            onClick={handleOpenSpinModal}
             className={`relative transition-all duration-300 ${
               isSpinAvailable 
                 ? 'cursor-pointer hover:scale-105 transform' 
@@ -124,11 +141,18 @@ export const UserProgress = ({
         </div>
       </div>
 
-      {/* SpinWheelModal Component - Now rendered with portal */}
+      {/* SpinWheelModal Component */}
       <SpinWheelModal
-        open={isModalOpen}
-        onClose={handleCloseModal}
+        open={isSpinModalOpen}
+        onClose={handleCloseSpinModal}
         onReward={handleReward}
+      />
+
+      {/* RewardModal Component */}
+      <RewardModal
+        open={isRewardModalOpen}
+        onClose={handleCloseRewardModal}
+        reward={currentReward}
       />
     </>
   );
