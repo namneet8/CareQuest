@@ -13,7 +13,8 @@ type Props = {
   totalCount: number;
   locked?: boolean;
   current?: boolean;
-  percentage: number;    // passed in from parent
+  percentage: number;
+  level: number; // 👈 NEW PROP
 };
 
 export const SublevelButton = ({
@@ -23,23 +24,28 @@ export const SublevelButton = ({
   locked,
   current,
   percentage,
+  level, // 👈 Receive level
 }: Props) => {
   const cycleLength = 8;
   const cycleIndex = index % cycleLength;
-  const rightPosition = Math.sin(cycleIndex * (2 * Math.PI / cycleLength)) * 90;
-  const marginTop = 30 + Math.cos(cycleIndex * (2 * Math.PI / cycleLength)) * 10;
+
+  // 👇 Alternate curve direction based on level number
+  const isOddLevel = level % 2 !== 0;
+  const baseRightPosition =
+    Math.sin(cycleIndex * (2 * Math.PI / cycleLength)) * 90;
+  const rightPosition = isOddLevel ? -baseRightPosition : baseRightPosition;
+  const marginTop =
+    30 + Math.cos(cycleIndex * (2 * Math.PI / cycleLength)) * 10;
 
   const isCompleted = !current && !locked;
   const Icon = isCompleted ? Check : index === totalCount ? Crown : Star;
   const href = isCompleted ? `/sublevel/${id}` : "/sublevel";
 
-  // 1) Round & clamp your incoming percentage
+  // Clamp and round the percentage
   const raw = Number.isNaN(percentage) ? 0 : percentage;
   const clamped = Math.min(Math.max(Math.round(raw), 0), 100);
-  // 2) If the sublevel is marked completed, force it to 100%
   const pct = isCompleted ? 100 : clamped;
 
-  // Make trail match path at 100% so you never see a gap
   const pathColor = "#4ade80";
   const trailColor = pct === 100 ? pathColor : "#e5e7eb";
 
@@ -52,7 +58,10 @@ export const SublevelButton = ({
       >
         <div
           className="relative"
-          style={{ right: `${rightPosition}px`, marginTop: `${marginTop}px` }}
+          style={{
+            right: `${rightPosition}px`,
+            marginTop: `${marginTop}px`,
+          }}
         >
           {current ? (
             <div className="h-[75px] w-[75px] relative">
@@ -108,5 +117,4 @@ export const SublevelButton = ({
     </div>
   );
 };
-
 

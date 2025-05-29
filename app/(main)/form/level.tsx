@@ -1,7 +1,6 @@
 import { sublevels, levels } from "@/db/schema";
 import { LevelBanner } from "./level-banner";
 import { SublevelButton } from "./sublevel-button"; 
-
 type Props = {
   id: number;
   order: number;
@@ -43,6 +42,7 @@ export const Level = ({
               current={isCurrent}
               locked={isLocked}
               percentage={isCurrent ? activeSublevelPercentage : isCompleted ? 100 : 0}
+              level={order}
             />
           );
         })}
