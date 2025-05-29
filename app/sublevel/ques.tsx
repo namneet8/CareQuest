@@ -41,6 +41,7 @@ export const Ques = ({
   const [activeIndex, setActiveIndex] = useState(0);
   const [saving, setSaving] = useState(false);
   const [showModal, setShowModal] = useState(false);
+  const [spinsEarned, setSpinsEarned] = useState(0);
 
   const current = qs[activeIndex];
 
@@ -94,7 +95,6 @@ const updateUserPoints = async (pointsToAdd: number) => {
       method: "POST",
       headers: { 
         "Content-Type": "application/json",
-        // Add any additional headers if needed
       },
       body: JSON.stringify({ points: pointsToAdd }),
     });
@@ -110,7 +110,16 @@ const updateUserPoints = async (pointsToAdd: number) => {
     
     const data = await res.json();
     console.log("✅ Points updated successfully:", data);
-    return data.newPoints;
+    
+    // Set spins earned for modal display
+    if (data.spinsEarned > 0) {
+      setSpinsEarned(data.spinsEarned);
+    }
+    
+    return {
+      newPoints: data.newPoints,
+      spinsEarned: data.spinsEarned
+    };
   } catch (e) {
     console.error("❌ Failed to update points:", e);
     // Don't throw the error, just log it and return null
@@ -154,10 +163,13 @@ const handleNext = async () => {
     
     // Award points for completing the sublevel
     console.log("🏆 Sublevel completed, awarding points...");
-    const newPoints = await updateUserPoints(20);
+    const result = await updateUserPoints(20);
     
-    if (newPoints !== null) {
-      console.log("✅ Points awarded successfully. New total:", newPoints);
+    if (result !== null) {
+      console.log("✅ Points awarded successfully. New total:", result.newPoints);
+      if (result.spinsEarned > 0) {
+        console.log("🎰 Spins earned:", result.spinsEarned);
+      }
     } else {
       console.log("⚠️ Points update failed, but continuing...");
     }
@@ -170,7 +182,6 @@ const handleNext = async () => {
   const handleAnswer = (qid: number, val: string | number) => {
     setAnswers((a) => ({ ...a, [qid]: val }));
   };
-
 
   const handlePrevious = () => {
     if (activeIndex === 0) return;
@@ -214,6 +225,7 @@ const handleNext = async () => {
 
   const handleContinue = async () => {
     setShowModal(false);
+    setSpinsEarned(0); // Reset spins earned
     await router.push("/form");
     router.refresh();
   };
@@ -234,6 +246,7 @@ const handleDownload = async () => {
     a.click();
     a.remove();
     window.URL.revokeObjectURL(url);
+    setSpinsEarned(0); // Reset spins earned
     await router.push("/form");
     router.refresh();
   } catch (e) {
@@ -322,6 +335,13 @@ const handleDownload = async () => {
                 <p className="mb-6">
                   Your <span className="font-semibold">{reportTitle}</span> is ready!
                 </p>
+                {spinsEarned > 0 && (
+                  <div className="mb-4 p-3 bg-blue-50 rounded-lg">
+                    <p className="text-blue-700 font-semibold">
+                      🎰 Bonus: You earned {spinsEarned} spin{spinsEarned > 1 ? 's' : ''}!
+                    </p>
+                  </div>
+                )}
                 <div className="flex justify-center gap-4">
                   <Button onClick={handleDownload}>Download Report</Button>
                   <Button variant="secondary" onClick={handleContinue}>Continue</Button>
@@ -330,9 +350,16 @@ const handleDownload = async () => {
             ) : (
               <>
                 <h2 className="text-2xl font-bold mb-4">Congratulations!</h2>
-                <p className="mb-6">
+                <p className="mb-4">
                   You have earned <span className="font-semibold">20 points</span>!
                 </p>
+                {spinsEarned > 0 && (
+                  <div className="mb-4 p-3 bg-blue-50 rounded-lg">
+                    <p className="text-blue-700 font-semibold">
+                      🎰 Bonus: You earned {spinsEarned} spin{spinsEarned > 1 ? 's' : ''}!
+                    </p>
+                  </div>
+                )}
                 <Button onClick={handleContinue}>Continue</Button>
               </>
             )}

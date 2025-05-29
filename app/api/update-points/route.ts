@@ -37,13 +37,16 @@ export async function POST(req: NextRequest) {
     if (!currentProgress) {
       console.log("❌ User progress not found, creating new record");
       
+      // Calculate spins for new user (1 spin per 100 points)
+      const newSpins = Math.floor(points / 100);
+      
       // Create new user progress if it doesn't exist
       const newProgress = await db
         .insert(userProgress)
         .values({
           userId,
           points: points,
-          spins: 5, // Default spins
+          spins: newSpins,
         })
         .returning();
 
@@ -52,29 +55,46 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ 
         success: true, 
         newPoints: points,
-        pointsAdded: points 
+        newSpins: newSpins,
+        pointsAdded: points,
+        spinsEarned: newSpins
       });
     }
 
-    // Update points
-    const newPoints = currentProgress.points + points;
+    // Calculate new points and spins
+    const oldPoints = currentProgress.points;
+    const newPoints = oldPoints + points;
     
-    console.log("🔄 Updating points from", currentProgress.points, "to", newPoints);
+    // Calculate spins based on crossing 100-point thresholds
+    const oldSpinThreshold = Math.floor(oldPoints / 100);
+    const newSpinThreshold = Math.floor(newPoints / 100);
+    const spinsEarned = newSpinThreshold - oldSpinThreshold;
+    const newTotalSpins = currentProgress.spins + spinsEarned;
     
+    console.log("🎯 Spin calculation:");
+    console.log("   Old points:", oldPoints, "-> New points:", newPoints);
+    console.log("   Old spin threshold:", oldSpinThreshold, "-> New spin threshold:", newSpinThreshold);
+    console.log("   Spins earned:", spinsEarned);
+    console.log("   Old total spins:", currentProgress.spins, "-> New total spins:", newTotalSpins);
+    
+    // Update points and spins
     await db
       .update(userProgress)
       .set({ 
         points: newPoints,
+        spins: newTotalSpins,
         updatedAt: new Date()
       })
       .where(eq(userProgress.userId, userId));
 
-    console.log("✅ Points updated successfully");
+    console.log("✅ Points and spins updated successfully");
 
     return NextResponse.json({ 
       success: true, 
       newPoints,
-      pointsAdded: points 
+      newSpins: newTotalSpins,
+      pointsAdded: points,
+      spinsEarned
     });
 
   } catch (error) {
@@ -84,13 +104,4 @@ export async function POST(req: NextRequest) {
       { status: 500 }
     );
   }
-}
-
-// Optional: Add GET method for testing
-export async function GET() {
-  console.log("🔔 GET /api/update-points hit - testing endpoint");
-  return NextResponse.json({ 
-    message: "Update points endpoint is working",
-    timestamp: new Date().toISOString()
-  });
 }
