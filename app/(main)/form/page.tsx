@@ -26,7 +26,7 @@ const FormPage = async () => {
 
     // Default values if user progress doesn't exist yet
     const points = userProgressInfo?.points ?? 0;
-    const spins = userProgressInfo?.spins ?? 5;
+    const spins = userProgressInfo?.spins ?? 0;
 
     return(
         <div className="flex flex-row-reverse gap-[48px] px-6">

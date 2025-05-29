@@ -38,7 +38,7 @@ export const UserProgress = ({
       <Link href="/shop">
         <Button variant="ghost" className="text-blue-500">
           <Image
-            src="/spin.svg"
+            src="/heart.svg"
             height={28}
             width={28}
             alt="Spins"
@@ -47,13 +47,6 @@ export const UserProgress = ({
           {spins}
         </Button>
       </Link>
-
-      {/* Subscription CTA */}
-      {!hasActiveSubscription && (
-        <Link href="/subscribe">
-          <Button variant="secondary">Subscribe</Button>
-        </Link>
-      )}
     </div>
   );
 };

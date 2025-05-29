@@ -6,7 +6,7 @@ export const userProgress = pgTable("user_progress", {
   userName: text("user_name").notNull().default("User"),
   userImageSrc: text("user_image_src").notNull().default("/logo.svg"),
   points: integer("points").notNull().default(0),
-  spins: integer("spins").notNull().default(5),
+  spins: integer("spins").notNull().default(0),
   activeLevelId: integer("active_level_id").references(() => levels.id),
   activeSublevelId: integer("active_sublevel_id").references(() => sublevels.id),
   createdAt: timestamp("created_at").defaultNow(),
