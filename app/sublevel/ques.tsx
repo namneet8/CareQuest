@@ -230,30 +230,47 @@ const handleNext = async () => {
     router.refresh();
   };
 
-const handleDownload = async () => {
-  try {
-    const response = await fetch(`/api/generate-report?levelId=${levelId}&sublevelId=${initialSublevelId}`);
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.error || "Failed to generate report");
+
+  const handleDownload = async () => {
+    try {
+      const response = await fetch(`/api/generate-report?levelId=${levelId}&sublevelId=${initialSublevelId}`);
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to generate report");
+      }
+      const { url, fileName } = await response.json();
+      const pdfResponse = await fetch(url);
+      if (!pdfResponse.ok) {
+        throw new Error("Failed to fetch PDF");
+      }
+      const blob = await pdfResponse.blob();
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = downloadUrl;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(downloadUrl);
+      setSpinsEarned(0);
+      await router.push("/form");
+      router.refresh();
+    } catch (e) {
+      console.error("Download failed:", e);
+      alert(`Failed to download the report: ${e}. Please try again.`);
     }
-    const blob = await response.blob();
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `health-report-level-${levelId}.pdf`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    window.URL.revokeObjectURL(url);
-    setSpinsEarned(0); // Reset spins earned
-    await router.push("/form");
-    router.refresh();
-  } catch (e) {
-    console.error("Download failed:", e);
-    alert(`Failed to download the report: ${e}. Please try again.`);
+  };
+
+  if (!current) {
+    return (
+      <div className="flex-1 flex items-center justify-center">
+        <div className="text-center">
+          <h2 className="text-2xl font-bold mb-4">All Done!</h2>
+          <p>Thank you for completing all questions.</p>
+        </div>
+      </div>
+    );
   }
-};
 
   if (!current) {
     return (

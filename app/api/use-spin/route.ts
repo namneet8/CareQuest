@@ -65,7 +65,7 @@ export async function POST(req: NextRequest) {
 
     // Calculate new values based on reward
     let pointsToAdd = 0;
-    let newSpins = currentProgress.spins - 1; // Always deduct one spin
+    let newSpins = currentProgress.spins - 1; // Deduct one spin by default
 
     // Handle different reward types
     switch (reward) {
@@ -90,6 +90,10 @@ export async function POST(req: NextRequest) {
 
     const newPoints = currentProgress.points + pointsToAdd;
 
+    // Check if points have reached or exceeded a multiple of 100
+    const spinsToAdd = Math.floor(newPoints / 100) - Math.floor(currentProgress.points / 100);
+    newSpins += spinsToAdd;
+
     // Update user progress
     await db
       .update(userProgress)
@@ -104,6 +108,7 @@ export async function POST(req: NextRequest) {
     console.log("🎁 Reward processed:", reward);
     console.log("📊 New points:", newPoints);
     console.log("🎰 Remaining spins:", newSpins);
+    console.log("🎰 Spins added from points:", spinsToAdd);
 
     return NextResponse.json({
       success: true,

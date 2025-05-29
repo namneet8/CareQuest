@@ -6,10 +6,10 @@ import { eq } from "drizzle-orm";
 
 export async function POST(req: NextRequest) {
   console.log("🔔 POST /api/update-points hit");
-  
+
   try {
     const { userId } = await auth();
-    
+
     if (!userId) {
       console.log("❌ No userId found");
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -36,65 +36,59 @@ export async function POST(req: NextRequest) {
 
     if (!currentProgress) {
       console.log("❌ User progress not found, creating new record");
-      
-      // Calculate spins for new user (1 spin per 100 points)
-      const newSpins = Math.floor(points / 100);
-      
+
+      // Calculate spins for new user based on points
+      const spinsToAdd = Math.floor(points / 100);
+
       // Create new user progress if it doesn't exist
       const newProgress = await db
         .insert(userProgress)
         .values({
           userId,
           points: points,
-          spins: newSpins,
+          spins: spinsToAdd, // Award spins based on points
+          updatedAt: new Date(),
         })
         .returning();
 
       console.log("✅ Created new progress:", newProgress[0]);
-      
-      return NextResponse.json({ 
-        success: true, 
+
+      return NextResponse.json({
+        success: true,
         newPoints: points,
-        newSpins: newSpins,
+        newSpins: spinsToAdd,
         pointsAdded: points,
-        spinsEarned: newSpins
+        spinsAdded: spinsToAdd,
       });
     }
 
     // Calculate new points and spins
-    const oldPoints = currentProgress.points;
-    const newPoints = oldPoints + points;
-    
-    // Calculate spins based on crossing 100-point thresholds
-    const oldSpinThreshold = Math.floor(oldPoints / 100);
-    const newSpinThreshold = Math.floor(newPoints / 100);
-    const spinsEarned = newSpinThreshold - oldSpinThreshold;
-    const newTotalSpins = currentProgress.spins + spinsEarned;
-    
-    console.log("🎯 Spin calculation:");
-    console.log("   Old points:", oldPoints, "-> New points:", newPoints);
-    console.log("   Old spin threshold:", oldSpinThreshold, "-> New spin threshold:", newSpinThreshold);
-    console.log("   Spins earned:", spinsEarned);
-    console.log("   Old total spins:", currentProgress.spins, "-> New total spins:", newTotalSpins);
-    
-    // Update points and spins
+    const newPoints = currentProgress.points + points;
+    // Calculate spins to add based on points crossing multiples of 100
+    const spinsToAdd = Math.floor(newPoints / 100) - Math.floor(currentProgress.points / 100);
+    const newSpins = currentProgress.spins + spinsToAdd;
+
+    console.log("🔄 Updating points from", currentProgress.points, "to", newPoints);
+    console.log("🎰 Updating spins from", currentProgress.spins, "to", newSpins);
+
+    // Update user progress
     await db
       .update(userProgress)
-      .set({ 
+      .set({
         points: newPoints,
-        spins: newTotalSpins,
-        updatedAt: new Date()
+        spins: newSpins,
+        updatedAt: new Date(),
       })
       .where(eq(userProgress.userId, userId));
 
     console.log("✅ Points and spins updated successfully");
 
-    return NextResponse.json({ 
-      success: true, 
+    return NextResponse.json({
+      success: true,
       newPoints,
-      newSpins: newTotalSpins,
+      newSpins,
       pointsAdded: points,
-      spinsEarned
+      spinsAdded: spinsToAdd,
     });
 
   } catch (error) {

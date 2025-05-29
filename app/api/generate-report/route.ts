@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { getCompletedSublevelsWithResponses } from "@/db/queries";
 import jsPDF from "jspdf";
+import { promises as fs } from "fs";
+import path from "path";
 
 export const runtime = "nodejs";
 
@@ -9,6 +11,12 @@ export async function GET(request: Request) {
   const { userId } = await auth();
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const url = new URL(request.url);
+  const levelId = url.searchParams.get("levelId");
+  if (!levelId || !["1", "2", "3"].includes(levelId)) {
+    return NextResponse.json({ error: "Invalid or missing levelId" }, { status: 400 });
   }
 
   const completed = await getCompletedSublevelsWithResponses();
@@ -62,16 +70,22 @@ export async function GET(request: Request) {
       y += 8;
     }
 
-    const buf = Buffer.from(doc.output("arraybuffer"));
-    return new NextResponse(buf, {
-      headers: {
-        "Content-Type": "application/pdf",
-        "Content-Disposition": `attachment; filename=cumulative-report.pdf`,
-      },
+    // Save PDF to temporary folder
+    const tempDir = path.join(process.cwd(), "tmp");
+    await fs.mkdir(tempDir, { recursive: true }); // Ensure tmp directory exists
+    const fileName = `healthreport-${levelId}.pdf`;
+    const filePath = path.join(tempDir, fileName);
+    const pdfBuffer = Buffer.from(doc.output("arraybuffer"));
+    await fs.writeFile(filePath, pdfBuffer);
+
+    // Return the file name and URL for accessing the PDF
+    return NextResponse.json({
+      fileName,
+      levelId,
+      url: `/api/reports/${levelId}`,
     });
   } catch (e) {
-    console.error("PDF generation failed:", e);
+    console.error("PDF generation or saving failed:", e);
     return NextResponse.json({ error: "PDF generation failed" }, { status: 500 });
   }
 }
-
