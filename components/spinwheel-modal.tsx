@@ -16,7 +16,7 @@ const prizes = [
   { option: "50% Discount" },
   { option: "$50 Gift Card" },
   { option: "$10 Gift Card" },
-    { option: "Free Doctor Consultation" },
+  { option: "Free Doctor Consultation" },
   { option: "Free Dental Appointment" },
   { option: "Try Again" },
 ];
@@ -35,20 +35,21 @@ export const SpinWheelModal = ({ open, onClose, onReward }: Props) => {
   // Handle body scroll lock when modal is open
   useEffect(() => {
     if (open) {
-      document.body.style.overflow = 'hidden';
+      document.body.style.overflow = "hidden";
     } else {
-      document.body.style.overflow = 'unset';
+      document.body.style.overflow = "unset";
     }
 
     // Cleanup on unmount
     return () => {
-      document.body.style.overflow = 'unset';
+      document.body.style.overflow = "unset";
     };
   }, [open]);
 
   const handleSpinClick = () => {
-    const newPrizeNumber = Math.floor(Math.random() * prizes.length);
-    setPrizeNumber(newPrizeNumber);
+    // Always select the "$10 Gift Card" (index 3)
+    const fixedPrizeNumber = 3;
+    setPrizeNumber(fixedPrizeNumber);
     setMustSpin(true);
   };
 
@@ -61,14 +62,14 @@ export const SpinWheelModal = ({ open, onClose, onReward }: Props) => {
   if (!mounted || !open) return null;
 
   const modalContent = (
-    <div 
+    <div
       className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center"
       style={{ zIndex: 9999 }}
       onClick={handleBackdropClick}
     >
       <div className="bg-white rounded-xl p-6 shadow-xl flex flex-col items-center gap-4 relative max-w-md mx-4">
         {/* Close button */}
-        <button 
+        <button
           className="absolute top-2 right-2 w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 font-bold text-xl"
           onClick={onClose}
           aria-label="Close modal"
@@ -94,14 +95,14 @@ export const SpinWheelModal = ({ open, onClose, onReward }: Props) => {
             spinDuration={0.8}
             onStopSpinning={() => {
               setMustSpin(false);
-              onReward(prizes[prizeNumber].option);
+              onReward(prizes[prizeNumber].option); // Will always be "$10 Gift Card"
             }}
           />
         </div>
 
         {/* Spin button */}
         {!mustSpin && (
-          <Button 
+          <Button
             onClick={handleSpinClick}
             className="bg-blue-500 hover:bg-blue-600 text-white px-8 py-2 text-lg"
           >

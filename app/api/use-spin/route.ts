@@ -4,23 +4,42 @@ import db from "@/db/drizzle";
 import { userProgress } from "@/db/schema";
 import { eq } from "drizzle-orm";
 
+// Define possible rewards with weights for controlled randomness
+const rewards = [
+  { option: "10% Discount", weight: 20 },
+  { option: "50% Discount", weight: 5 },
+  { option: "$50 Gift Card", weight: 5 },
+  { option: "$10 Gift Card", weight: 30 },
+  { option: "Free Online Doctor Consultation", weight: 10 },
+  { option: "Free Dental Appointment", weight: 10 },
+  { option: "Try Again", weight: 20 },
+];
+
+// Function to select a reward based on weights
+function selectReward(): string {
+  const totalWeight = rewards.reduce((sum, reward) => sum + reward.weight, 0);
+  let random = Math.random() * totalWeight;
+  for (const reward of rewards) {
+    random -= reward.weight;
+    if (random <= 0) {
+      return reward.option;
+    }
+  }
+  return rewards[rewards.length - 1].option; // Fallback
+}
+
 export async function POST(req: NextRequest) {
   console.log("🎰 POST /api/use-spin hit");
-  
+
   try {
     const { userId } = await auth();
-    
+
     if (!userId) {
       console.log("❌ No userId found");
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     console.log("✅ UserId:", userId);
-
-    const body = await req.json();
-    const { reward } = body;
-
-    console.log("🎁 Reward won:", reward);
 
     // Get current user progress
     const currentProgress = await db.query.userProgress.findFirst({
@@ -34,10 +53,15 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "User progress not found" }, { status: 404 });
     }
 
-    if (currentProgress.spins <= 0) {
-      console.log("❌ No spins available");
-      return NextResponse.json({ error: "No spins available" }, { status: 400 });
+    if (currentProgress.spins <= 0 || currentProgress.spins > 5) {
+      console.log("❌ Invalid spins count");
+      return NextResponse.json({ error: "No spins available or spin limit exceeded" }, { status: 400 });
     }
+
+    // Select reward on the server
+    const reward = selectReward();
+
+    console.log("🎁 Reward selected:", reward);
 
     // Calculate new values based on reward
     let pointsToAdd = 0;
@@ -49,9 +73,12 @@ export async function POST(req: NextRequest) {
         pointsToAdd = 50;
         break;
       case "10% Discount":
+      case "50% Discount":
+      case "$50 Gift Card":
       case "$10 Gift Card":
+      case "Free Doctor Consultation":
+      case "Free Dental Appointment":
         // These don't add points, just record the reward
-        // You might want to save these to a separate rewards table
         break;
       case "Try Again":
         // Don't deduct spin for "Try Again"
@@ -66,10 +93,10 @@ export async function POST(req: NextRequest) {
     // Update user progress
     await db
       .update(userProgress)
-      .set({ 
+      .set({
         points: newPoints,
         spins: newSpins,
-        updatedAt: new Date()
+        updatedAt: new Date(),
       })
       .where(eq(userProgress.userId, userId));
 
@@ -78,15 +105,12 @@ export async function POST(req: NextRequest) {
     console.log("📊 New points:", newPoints);
     console.log("🎰 Remaining spins:", newSpins);
 
-    // TODO: Save reward to a separate rewards/achievements table if needed
-    // This could track user's reward history
-
-    return NextResponse.json({ 
-      success: true, 
+    return NextResponse.json({
+      success: true,
       reward,
       newPoints,
       newSpins,
-      pointsAdded: pointsToAdd
+      pointsAdded: pointsToAdd,
     });
 
   } catch (error) {
