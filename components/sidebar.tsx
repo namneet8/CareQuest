@@ -1,7 +1,10 @@
+"use client";
+
 import { cn } from "@/lib/utils";
 import  Image from "next/image";
 import Link from "next/link"
 import { SidebarItem} from "./sidebar-item";
+import { Button } from "@/components/ui/button";
 import { ClerkLoaded,
     ClerkLoading,
     UserButton,
@@ -24,10 +27,16 @@ export const Sidebar = ( { className }: Props) => {
                 </div>
             </Link>
             <div className="flex flex-col gap-y-2 flex-1">
-                <SidebarItem label={"Form"} iconSrc={"/home.svg"} href={"/form"} />
+                <SidebarItem label={"Home"} iconSrc={"/home.svg"} href={"/form"} />
                 <SidebarItem label={"My Reports"} iconSrc={"/quests.svg"} href={"/reports"} />
                 <SidebarItem label={"My Rewards"} iconSrc={"/leaderboard.svg"} href={"/rewards"} />
-                <SidebarItem label={"About Us"} iconSrc={"/shop.svg"} href={"/shop"} />
+                <div 
+                    onClick={() => window.open('https://prescripto-doctor-appointment-booking-3.onrender.com/', '_blank')}
+                    className="inline-flex items-center justify-start gap-2 whitespace-nowrap rounded-xl text-sm font-bold transition-all bg-transparent text-slate-500 border-2 border-transparent hover:bg-slate-100 transition-none h-[52px] px-4 py-2 cursor-pointer uppercase tracking-wide"
+                >
+                    <Image src="/shop.svg" alt="Book Appointment" className="mr-5" height={32} width={32}/>
+                    Book Appointment
+                </div>
             </div>
             <div className="p-4">
                 <ClerkLoading>

@@ -4,6 +4,7 @@ import { getCompletedSublevelsWithResponses } from "@/db/queries";
 import jsPDF from "jspdf";
 import { promises as fs } from "fs";
 import path from "path";
+import autoTable from 'jspdf-autotable';
 
 export const runtime = "nodejs";
 
@@ -25,67 +26,100 @@ export async function GET(request: Request) {
   }
 
   try {
-    const doc = new jsPDF({ unit: "mm", format: "a4" });
-    const W = doc.internal.pageSize.getWidth();
-    const margin = 20;
-    const maxY = 270;
-    let y = 30;
+  const doc = new jsPDF({ unit: "mm", format: "a4" });
+  const W = doc.internal.pageSize.getWidth();
+  const H = doc.internal.pageSize.getHeight();
+  const margin = 20;
+  let y = 30;
 
-    // Header
-    doc.setFontSize(20);
-    doc.text("Cumulative Health Report", W / 2, y, { align: "center" });
-    y += 15;
-    doc.setFontSize(12);
-    doc.text(`Generated on ${new Date().toLocaleDateString()}`, W / 2, y, { align: "center" });
-    y += 20;
+  // Header
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(20);
+  doc.setTextColor(33, 37, 41);
+  doc.text("Cumulative Health Report", W / 2, y, { align: "center" });
 
-    let lastLevel = "";
-    for (const grp of completed) {
-      if (y > maxY) { doc.addPage(); y = 30; }
+  y += 10;
+  doc.setFontSize(12);
+  doc.setFont("helvetica", "normal");
+  doc.text(`Generated on ${new Date().toLocaleDateString()}`, W / 2, y, { align: "center" });
 
-      if (grp.levelTitle !== lastLevel) {
-        doc.setFontSize(16);
-        doc.text(grp.levelTitle, margin, y);
-        y += 8;
-        lastLevel = grp.levelTitle;
-      }
+  y += 15;
 
-      doc.setFontSize(14);
-      doc.text(`• ${grp.sublevelTitle}`, margin + 5, y);
-      y += 6;
+  let lastLevel = "";
 
-      doc.setFontSize(11);
-      for (const { questionText, responseText } of grp.questions) {
-        if (y > maxY) { doc.addPage(); y = 30; }
-        const line = `${questionText}: ${responseText}`;
-        const lines = doc.splitTextToSize(line, W - margin * 2 - 5);
-        for (const l of lines) {
-          doc.text(l, margin + 10, y);
-          y += 5;
-          if (y > maxY) { doc.addPage(); y = 30; }
-        }
-        y += 2;
-      }
+  for (const grp of completed) {
+  if (grp.levelTitle !== lastLevel) {
+    doc.setFontSize(14);
+    doc.setTextColor(0, 102, 204);
+    doc.setFont("helvetica", "bold");
+    doc.text(grp.levelTitle, margin, y);
+    y += 8;
+    lastLevel = grp.levelTitle;
+  }
 
-      y += 8;
+  doc.setFontSize(12);
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(60, 60, 60);
+  doc.text(`• ${grp.sublevelTitle}`, margin + 2, y);
+  y += 4;
+
+  const tableData = grp.questions.map(({ questionText, responseText }) => [
+    { content: questionText, styles: { cellPadding: 3 } },
+    { content: responseText || "—", styles: { cellPadding: 3 } }
+  ]);
+
+  autoTable(doc, {
+    startY: y,
+    head: [["Question", "Answer"]],
+    body: tableData,
+    margin: { left: margin, right: margin },
+    theme: 'grid',
+    headStyles: {
+      fillColor: [0, 102, 204],
+      textColor: 255,
+      fontStyle: 'bold'
+    },
+    bodyStyles: {
+      fontSize: 10,
+      textColor: 50
     }
+  });
 
-    // Save PDF to temporary folder
-    const tempDir = path.join(process.cwd(), "tmp");
-    await fs.mkdir(tempDir, { recursive: true }); // Ensure tmp directory exists
-    const fileName = `healthreport-${levelId}.pdf`;
-    const filePath = path.join(tempDir, fileName);
-    const pdfBuffer = Buffer.from(doc.output("arraybuffer"));
-    await fs.writeFile(filePath, pdfBuffer);
+  // ✅ Move y update here, after autoTable is done rendering
+  y = doc.lastAutoTable.finalY + 10;
 
-    // Return the file name and URL for accessing the PDF
-    return NextResponse.json({
-      fileName,
-      levelId,
-      url: `/api/reports/${levelId}`,
-    });
-  } catch (e) {
-    console.error("PDF generation or saving failed:", e);
-    return NextResponse.json({ error: "PDF generation failed" }, { status: 500 });
+  if (y > H - 30) {
+    doc.addPage();
+    y = 30;
   }
 }
+
+  // Footer with page numbers
+  const pageCount = doc.internal.getNumberOfPages();
+  for (let i = 1; i <= pageCount; i++) {
+    doc.setPage(i);
+    doc.setFontSize(10);
+    doc.setTextColor(150);
+    doc.text(`Page ${i} of ${pageCount}`, W - margin, H - 10, { align: "right" });
+  }
+
+  // Save PDF
+  const tempDir = path.join(process.cwd(), "tmp");
+  await fs.mkdir(tempDir, { recursive: true });
+  const fileName = `healthreport-${levelId}.pdf`;
+  const filePath = path.join(tempDir, fileName);
+  const pdfBuffer = Buffer.from(doc.output("arraybuffer"));
+  await fs.writeFile(filePath, pdfBuffer);
+
+  return NextResponse.json({
+    fileName,
+    levelId,
+    url: `/api/reports/${levelId}`,
+  });
+
+} catch (e) {
+  console.error("PDF generation or saving failed:", e);
+  return NextResponse.json({ error: "PDF generation failed" }, { status: 500 });
+}
+}
+

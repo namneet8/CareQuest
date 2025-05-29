@@ -1,3 +1,4 @@
+
 "use client";
 
 import { questionOptions, questions } from "@/db/schema";
@@ -43,6 +44,7 @@ export const Ques = ({
   const [activeIndex, setActiveIndex] = useState(0);
   const [saving, setSaving] = useState(false);
   const [showModal, setShowModal] = useState(false);
+  const [showSkipModal, setShowSkipModal] = useState(false);
   const [spinsEarned, setSpinsEarned] = useState(0);
   const [mounted, setMounted] = useState(false);
   const [encouragingMessage, setEncouragingMessage] = useState("");
@@ -53,16 +55,14 @@ export const Ques = ({
   const encouragingMessages = [
     "Great job! You're one step closer to unlocking your full health report!",
     "Awesome progress! Keep going to complete all levels and earn more rewards!",
-    "You're doing fantastic! Just a few more levels to reach development!",
+    "You're doing fantastic! Just a few more levels to reach the final level!",
     "Well done! Continue crushing it to reach the final level!",
   ];
 
-  // Handle body scroll for modal and set random encouraging message
+  // Handle body scroll for modals
   useEffect(() => {
     setMounted(true);
-    if (showModal && !isCrownLevel) {
-      const randomIndex = Math.floor(Math.random() * encouragingMessages.length);
-      setEncouragingMessage(encouragingMessages[randomIndex]);
+    if (showModal || showSkipModal) {
       document.body.style.overflow = "hidden";
     } else {
       document.body.style.overflow = "unset";
@@ -70,6 +70,14 @@ export const Ques = ({
     return () => {
       document.body.style.overflow = "unset";
     };
+  }, [showModal, showSkipModal]);
+
+  // Set random encouraging message for completion modal
+  useEffect(() => {
+    if (showModal && !isCrownLevel) {
+      const randomIndex = Math.floor(Math.random() * encouragingMessages.length);
+      setEncouragingMessage(encouragingMessages[randomIndex]);
+    }
   }, [showModal, isCrownLevel]);
 
   // Merge saved responses on mount
@@ -221,16 +229,24 @@ export const Ques = ({
         if (childAns === undefined || childAns === "") {
           return false;
         }
-        }
       }
+    }
     return true;
   };
 
   const handleSkip = () => {
     if (!current.mandatory) {
-      if (current.importanceDescription && !confirm(`${current.importanceDescription}\n\nSkip?`)) return;
-      handleNext();
+      setShowSkipModal(true);
     }
+  };
+
+  const handleConfirmSkip = () => {
+    setShowSkipModal(false);
+    handleNext();
+  };
+
+  const handleCancelSkip = () => {
+    setShowSkipModal(false);
   };
 
   const handleContinue = async () => {
@@ -291,7 +307,8 @@ export const Ques = ({
     levelId === 2 ? "Intermediate Health Report" :
     levelId === 3 ? "Complete Health Report" : "Health Report";
 
-  const modalContent = (
+  // Completion Modal
+  const completionModalContent = (
     <div
       className="fixed inset-0 flex items-center justify-center"
       style={{ zIndex: 9999 }}
@@ -316,24 +333,24 @@ export const Ques = ({
         <div className="text-center">
           {/* Celebration Icon */}
           <div className="mb-4">
-            <div className="text-6xl">🎉</div>
+            <div className="text-7xl">🎉</div>
           </div>
 
           {/* Reward Image */}
           <div className="mb-6 flex justify-center">
             <div className="relative">
               <Image
-                src={isCrownLevel ? "/report-icon.png" : "/points-icon.png"}
-                width={120}
-                height={120}
+                src={isCrownLevel ? "/happy.gif" : "/happy.gif"}
+                width={150}
+                height={150}
                 alt={isCrownLevel ? "Health Report" : "Points Earned"}
                 className="rounded-xl shadow-lg"
                 onError={(e) => {
                   e.currentTarget.src = "/reward-generic.png";
                 }}
               />
-              <div className="absolute -top-2 -right-2 text-2xl animate-bounce">✨</div>
-              <div className="absolute -bottom-2 -left-2 text-2xl animate-bounce delay-150">🌟</div>
+              <div className="absolute -top-1 -right-1 text-3xl animate-bounce">✨</div>
+              <div className="absolute -bottom-2 -left-2 text-3xl animate-bounce delay-150">🌟</div>
             </div>
           </div>
 
@@ -381,6 +398,86 @@ export const Ques = ({
               className="w-full border-gray-300 text-gray-700 hover:bg-gray-50 font-semibold py-3"
             >
               Continue
+            </Button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
+  // Skip Confirmation Modal
+  const skipModalContent = (
+    <div
+      className="fixed inset-0 flex items-center justify-center"
+      style={{ zIndex: 9999 }}
+    >
+      {/* Backdrop */}
+      <div
+        className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+        onClick={() => setShowSkipModal(false)}
+      />
+      
+      {/* Modal Content */}
+      <div className="relative bg-white rounded-2xl shadow-2xl p-8 mx-4 max-w-md w-full animate-in zoom-in-95 duration-300">
+        {/* Close Button */}
+        <button
+          onClick={() => setShowSkipModal(false)}
+          className="absolute top-4 right-4 text-gray-500 hover:text-gray-700 text-xl font-bold w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 transition-colors"
+        >
+          ×
+        </button>
+
+        {/* Content */}
+        <div className="text-center">
+          {/* Question Icon */}
+          <div className="mb-4">
+            <div className="text-6xl">❓</div>
+          </div>
+
+          {/* Image */}
+          <div className="mb-6 flex justify-center">
+            <div className="relative">
+              <Image
+                src="/reward-generic.png"
+                width={120}
+                height={120}
+                alt="Skip Question"
+                className="rounded-xl shadow-lg"
+                onError={(e) => {
+                  e.currentTarget.src = "/reward-generic.png";
+                }}
+              />
+              <div className="absolute -top-2 -right-2 text-2xl animate-bounce">✨</div>
+              <div className="absolute -bottom-2 -left-2 text-2xl animate-bounce delay-150">🌟</div>
+            </div>
+          </div>
+
+          {/* Title */}
+          <h2 className="text-2xl font-bold text-gray-800 mb-2">
+            Skip This Question?
+          </h2>
+
+          {/* Description */}
+          <p className="text-gray-600 mb-6 text-lg">
+            {current.importanceDescription
+              ? `${current.importanceDescription} Are you sure you want to skip this question?`
+              : "Are you sure you want to skip this question?"}
+          </p>
+
+          {/* Action Buttons */}
+          <div className="space-y-3">
+            <Button
+              className="w-full bg-orange-500 hover:bg-orange-600 text-white font-semibold py-3 text-lg"
+              onClick={handleConfirmSkip}
+            >
+              Skip
+            </Button>
+            <Button
+              variant="primary"
+              onClick={handleCancelSkip}
+              className="w-full border-gray-300 text-gray-700 hover:bg-gray-50 font-semibold py-3"
+            >
+              Cancel
             </Button>
           </div>
         </div>
@@ -445,7 +542,8 @@ export const Ques = ({
         </div>
       </div>
 
-      {mounted && showModal && createPortal(modalContent, document.body)}
+      {mounted && showModal && createPortal(completionModalContent, document.body)}
+      {mounted && showSkipModal && createPortal(skipModalContent, document.body)}
     </>
   );
 };
