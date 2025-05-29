@@ -301,13 +301,12 @@ const handleNext = async () => {
       <div className="mt-8 flex-1 flex items-start justify-center">
         <div className="lg:min-h-[350px] lg:w-[600px] w-full px-6 lg:px-0 flex flex-col gap-y-8">
           <div className="text-center">
-            <h1 className="text-2xl lg:text-3xl font-bold mb-1">{title}</h1>
-            <span className="text-sm text-gray-500">{activeIndex + 1} of {qs.length}</span>
-          </div>
-
-          {current.type === "ASSIST" && (
+            {current.type !== null  && (
             <QuestionBubble question={current.questionText} />
           )}
+            {/* <h1 className="text-2xl lg:text-3xl font-bold mb-1">{title}</h1> */}
+            <span className="text-sm text-gray-500">{activeIndex + 1} of {qs.length}</span>
+          </div>
 
           <Question
             options={current.questionOptions}
