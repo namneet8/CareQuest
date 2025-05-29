@@ -28,27 +28,14 @@ export const QuestionBubble = ({ question }: Props) => {
                 width={120}
                 className="block lg:hidden"
             />
-            <div className="relative inline-block border-2 rounded-xl text-sm lg:text-base">
+            <div className="relative py-2 px-4 border-2 rounded-xl text-sm lg:text-base">
                 <style jsx>{`
-                    .bubble {
-                        display: inline-block;
-                        overflow: hidden;
-                        white-space: nowrap;
-                        animation: expand 2s steps(${question.length}, end) forwards;
-                    }
                     .typewriter {
                         display: inline-block;
                         overflow: hidden;
                         white-space: nowrap;
-                        direction: rtl;
-                        text-align: right;
-                        border-left: 2px solid currentColor;
+                        border-right: 2px solid currentColor;
                         animation: typing 2s steps(${question.length}, end), blink-caret 0.75s step-end infinite;
-                        padding: 0.5rem 1rem; /* Restore padding inside the text */
-                    }
-                    @keyframes expand {
-                        from { width: 0; }
-                        to { width: calc(${question.length} * 0.6rem + 2rem); } /* Approximate width based on character count */
                     }
                     @keyframes typing {
                         from { width: 0; }
@@ -59,9 +46,7 @@ export const QuestionBubble = ({ question }: Props) => {
                         50% { border-color: currentColor; }
                     }
                 `}</style>
-                <div key={animationKey} className="bubble">
-                    <span className="typewriter">{question}</span>
-                </div>
+                <span key={animationKey} className="typewriter">{question}</span>
                 <div className="absolute -left-3 top-1/2 w-0 h-0 border-x-8 border-x-transparent border-t-8 transform -translate-y-1/2 rotate-90"/>
             </div>
         </div>
