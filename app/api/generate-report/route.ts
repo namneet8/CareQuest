@@ -1,7 +1,6 @@
-// app/api/generate-report/route.ts
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
-import { getCompletedSublevelsWithResponses } from "@/db/queries";  // ← our new helper
+import { getCompletedSublevelsWithResponses } from "@/db/queries";
 import jsPDF from "jspdf";
 
 export const runtime = "nodejs";
@@ -12,7 +11,6 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  // 1) grab every finished sublevel (with level+sublevel titles, questions, AND mapped responseText)
   const completed = await getCompletedSublevelsWithResponses();
   if (!completed.length) {
     return NextResponse.json({ error: "No completed sublevels found" }, { status: 404 });
@@ -25,7 +23,7 @@ export async function GET(request: Request) {
     const maxY = 270;
     let y = 30;
 
-    // header
+    // Header
     doc.setFontSize(20);
     doc.text("Cumulative Health Report", W / 2, y, { align: "center" });
     y += 15;
@@ -35,10 +33,8 @@ export async function GET(request: Request) {
 
     let lastLevel = "";
     for (const grp of completed) {
-      // page break
       if (y > maxY) { doc.addPage(); y = 30; }
 
-      // level header (once)
       if (grp.levelTitle !== lastLevel) {
         doc.setFontSize(16);
         doc.text(grp.levelTitle, margin, y);
@@ -46,12 +42,10 @@ export async function GET(request: Request) {
         lastLevel = grp.levelTitle;
       }
 
-      // sublevel header
       doc.setFontSize(14);
       doc.text(`• ${grp.sublevelTitle}`, margin + 5, y);
       y += 6;
 
-      // each question + its mapped .responseText
       doc.setFontSize(11);
       for (const { questionText, responseText } of grp.questions) {
         if (y > maxY) { doc.addPage(); y = 30; }
@@ -65,7 +59,7 @@ export async function GET(request: Request) {
         y += 2;
       }
 
-      y += 8; // space before next sublevel
+      y += 8;
     }
 
     const buf = Buffer.from(doc.output("arraybuffer"));
@@ -80,3 +74,4 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "PDF generation failed" }, { status: 500 });
   }
 }
+

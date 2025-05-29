@@ -4,85 +4,189 @@ import { levels, sublevels, questions, questionProgress, userResponses, question
 import { auth } from "@clerk/nextjs/server";
 import { eq, and } from "drizzle-orm";
 
-// db/queries.ts
-// 1) Fetch every fully completed sublevel, mapping selectedOptionId → option.text first
-export const getCompletedSublevelsWithResponses = cache(async () => {
-  const { userId } = await auth();
-  if (!userId) return [];
+export type CompletedGroup = {
+  levelTitle: string;
+  sublevelTitle: string;
+  questions: Array<{
+    questionText: string;
+    responseText: string;
+  }>;
+};
 
-  const all = await db.query.levels.findMany({
-    orderBy: (l, { asc }) => [asc(l.order)],
-    with: {
-      sublevel: {
-        orderBy: (s, { asc }) => [asc(s.order)],
-        with: {
-          questions: {
-            orderBy: (q, { asc }) => [asc(q.order)],
-            with: {
-              questionProgress: {
-                where: eq(questionProgress.userId, userId)
+
+export const getCompletedSublevelsWithResponses = cache(
+  async (): Promise<CompletedGroup[]> => {
+    const { userId } = await auth();
+    if (!userId) return [];
+
+    const data = await db.query.levels.findMany({
+      orderBy: (l, { asc }) => [asc(l.order)],
+      with: {
+        sublevel: {
+          orderBy: (s, { asc }) => [asc(s.order)],
+          with: {
+            questions: {
+              orderBy: (q, { asc }) => [asc(q.order)],
+              with: {
+                // for completed check
+                questionProgress: {
+                  where: eq(questionProgress.userId, userId),
+                },
+                // load all options so we can fallback
+                questionOptions: true,
+                // load just the latest response + join its selectedOption
+                userResponses: {
+                  where: eq(userResponses.userId, userId),
+                  orderBy: (ur, { desc }) => [desc(ur.updatedAt)],
+                  limit: 1,
+                  with: {
+                    selectedOption: true,
+                  },
+                },
               },
-              userResponses: {
-                where: eq(userResponses.userId, userId),
-                orderBy: (ur, { desc }) => [desc(ur.updatedAt)],
-                limit: 1
-              },
-              questionOptions: true
+            },
+          },
+        },
+      },
+    });
+
+    // --- DEBUG: inspect what Drizzle actually returned ---
+    console.log("⚙️ getCompletedSublevelsWithResponses raw:", JSON.stringify(data, null, 2));
+
+    const groups: CompletedGroup[] = [];
+
+    for (const lvl of data) {
+      for (const sub of lvl.sublevel) {
+        const allDone = sub.questions.every(
+          (q) =>
+            q.questionProgress.length > 0 &&
+            q.questionProgress.every((p) => p.completed)
+        );
+        if (!allDone) continue;
+
+        const qs = sub.questions.map((q) => {
+          const resp = q.userResponses[0];
+          let responseText = "";
+
+          if (resp) {
+            if (resp.responseText) {
+              // free‐text / fill
+              responseText = resp.responseText;
+            } else if (resp.selectedOption) {
+              // SELECT / YES_NO via the joined relation
+              responseText = resp.selectedOption.text;
+            } else if (resp.selectedOptionId != null) {
+              // fallback: match against questionOptions array
+              const opt = q.questionOptions.find((o) => o.id === resp.selectedOptionId);
+              responseText = opt?.text ?? String(resp.selectedOptionId);
+            } else if (resp.responseNumber != null) {
+              // RATE / RANGE
+              responseText = String(resp.responseNumber);
             }
           }
-        }
+
+          return {
+            questionText: q.questionText,
+            responseText,
+          };
+        });
+
+        groups.push({
+          levelTitle: lvl.title,
+          sublevelTitle: sub.title,
+          questions: qs,
+        });
       }
     }
-  });
 
-  const completedGroups: {
-    levelTitle: string;
-    sublevelTitle: string;
-    questions: Array<{ questionText: string; responseText: string }>;
-  }[] = [];
-
-  for (const lvl of all) {
-    for (const sub of lvl.sublevel) {
-      const allDone = sub.questions.every(q =>
-        q.questionProgress.length > 0 &&
-        q.questionProgress.every(p => p.completed)
-      );
-      if (!allDone) continue;
-
-      const qs = sub.questions.map(q => {
-        const resp = q.userResponses[0];
-        let text = "";
-
-        if (resp) {
-          if (resp.responseText) {
-            // free-text answers
-            text = resp.responseText;
-          } else if (resp.selectedOptionId != null) {
-            // SELECT / YES_NO → lookup option text first
-            const opt = q.questionOptions.find(o => o.id === resp.selectedOptionId);
-            text = opt?.text ?? String(resp.selectedOptionId);
-          } else if (resp.responseNumber != null) {
-            // numeric/rating answers
-            text = String(resp.responseNumber);
-          }
-        }
-
-        return {
-          questionText: q.questionText,
-          responseText: text
-        };
-      });
-
-      completedGroups.push({
-        levelTitle: lvl.title,
-        sublevelTitle: sub.title,
-        questions: qs
-      });
-    }
+    return groups;
   }
+);
+/**
+ * Returns every sublevel for which *all* questions are completed,
+ * along with the *one* latest userResponse (joined to its selectedOption).
+ */
+// export const getCompletedSublevelsWithResponses = cache(
+//   async (): Promise<CompletedGroup[]> => {
+//     const { userId } = await auth();
+//     if (!userId) return [];
 
-  return completedGroups;
-});
+//     // 1) Fetch all levels→sublevels→questions
+//     //    include questionProgress + only the last userResponse (with selectedOption)
+//     const data = await db.query.levels.findMany({
+//       orderBy: (l, { asc }) => [asc(l.order)],
+//       with: {
+//         sublevel: {
+//           orderBy: (s, { asc }) => [asc(s.order)],
+//           with: {
+//             questions: {
+//               orderBy: (q, { asc }) => [asc(q.order)],
+//               with: {
+//                 questionProgress: {
+//                   where: eq(questionProgress.userId, userId),
+//                 },
+//                 userResponses: {
+//                   where: eq(userResponses.userId, userId),
+//                   orderBy: (ur, { desc }) => [desc(ur.updatedAt)],
+//                   limit: 1,
+//                   with: {
+//                     selectedOption: true,   // ← join here
+//                   },
+//                 },
+//               },
+//             },
+//           },
+//         },
+//       },
+//     });
+
+//     const groups: CompletedGroup[] = [];
+
+//     for (const lvl of data) {
+//       for (const sub of lvl.sublevel) {
+//         // only keep sublevels where *every* questionProgress.completed === true
+//         const allDone = sub.questions.every(
+//           (q) =>
+//             q.questionProgress.length > 0 &&
+//             q.questionProgress.every((p) => p.completed)
+//         );
+//         if (!allDone) continue;
+
+//         // map each question → its single responseText
+//         const qs = sub.questions.map((q) => {
+//           const resp = q.userResponses[0];
+//           let responseText = "";
+
+//           if (resp) {
+//             if (resp.responseText) {
+//               // open-ended / fill
+//               responseText = resp.responseText;
+//             } else if (resp.selectedOption) {
+//               // SELECT / YES_NO
+//               responseText = resp.selectedOption.text;
+//             } else if (resp.responseNumber != null) {
+//               // RATE / RANGE
+//               responseText = String(resp.responseNumber);
+//             }
+//           }
+
+//           return {
+//             questionText: q.questionText,
+//             responseText,
+//           };
+//         });
+
+//         groups.push({
+//           levelTitle: lvl.title,
+//           sublevelTitle: sub.title,
+//           questions: qs,
+//         });
+//       }
+//     }
+
+//     return groups;
+//   }
+// );
 
 export const getLevels = cache(async () => {
   const {userId} = await auth();
@@ -264,80 +368,80 @@ export const getSublevelPercentage = cache(async () => {
   return percentage;
 });
 
-// Function to save user response and update progress
 export const saveUserResponse = async (
-  questionId: number, 
+  questionId: number,
   response: string | number,
   optionId?: number
 ) => {
   const { userId } = await auth();
-  
-  if (!userId) {
-    throw new Error("User not authenticated");
+  if (!userId) throw new Error("User not authenticated");
+
+  console.log("💾 saveUserResponse called with:", { questionId, response, optionId }); // Debug log
+
+  let responseText: string | null = null;
+  let responseNumber: number | null = null;
+  let selectedOptionId: number | null = optionId ?? null;
+
+  if (typeof response === "string") {
+    // Text response (including option text)
+    responseText = response;
+  } else if (typeof response === "number") {
+    // Numeric response for RATE/RANGE questions
+    responseNumber = response;
   }
 
-  try {
-    // Check if response already exists
-    const existingResponse = await db.query.userResponses.findFirst({
-      where: and(
-        eq(userResponses.userId, userId),
-        eq(userResponses.questionId, questionId)
-      )
-    });
+  const responseData = {
+    userId,
+    questionId,
+    responseText,
+    responseNumber,
+    selectedOptionId,
+    updatedAt: new Date(),
+  };
 
-    const responseData = {
+  console.log("💾 Saving response data:", responseData); // Debug log
+
+  // Upsert into userResponses:
+  const existing = await db.query.userResponses.findFirst({
+    where: and(
+      eq(userResponses.userId, userId),
+      eq(userResponses.questionId, questionId)
+    ),
+  });
+
+  if (existing) {
+    await db.update(userResponses)
+      .set(responseData)
+      .where(eq(userResponses.id, existing.id));
+  } else {
+    await db.insert(userResponses).values({
+      ...responseData,
+      createdAt: new Date(),
+    });
+  }
+
+  // Mark progress complete
+  const prog = await db.query.questionProgress.findFirst({
+    where: and(
+      eq(questionProgress.userId, userId),
+      eq(questionProgress.questionId, questionId)
+    ),
+  });
+  if (prog) {
+    await db.update(questionProgress)
+      .set({ completed: true, completedAt: new Date() })
+      .where(eq(questionProgress.id, prog.id));
+  } else {
+    await db.insert(questionProgress).values({
       userId,
       questionId,
-      responseText: typeof response === 'string' ? response : null,
-      responseNumber: typeof response === 'number' ? response : null,
-      selectedOptionId: optionId || null,
-      updatedAt: new Date(),
-    };
-
-    if (existingResponse) {
-      // Update existing response
-      await db.update(userResponses)
-        .set(responseData)
-        .where(eq(userResponses.id, existingResponse.id));
-    } else {
-      // Create new response
-      await db.insert(userResponses).values({
-        ...responseData,
-        createdAt: new Date(),
-      });
-    }
-
-    // Update or create question progress
-    const existingProgress = await db.query.questionProgress.findFirst({
-      where: and(
-        eq(questionProgress.userId, userId),
-        eq(questionProgress.questionId, questionId)
-      )
+      completed: true,
+      completedAt: new Date(),
     });
-
-    if (existingProgress) {
-      await db.update(questionProgress)
-        .set({ 
-          completed: true,
-          completedAt: new Date()
-        })
-        .where(eq(questionProgress.id, existingProgress.id));
-    } else {
-      await db.insert(questionProgress).values({
-        userId,
-        questionId,
-        completed: true,
-        completedAt: new Date(),
-      });
-    }
-
-    return { success: true };
-  } catch (error) {
-    console.error("Error saving user response:", error);
-    throw new Error("Failed to save response");
   }
-};
 
+  return { success: true };
+};
 export const getUserResponses = async (sublevelId: number) => {
   const { userId } = await auth();
   if (!userId) return {};
@@ -350,21 +454,27 @@ export const getUserResponses = async (sublevelId: number) => {
   for (const question of sublevel.questions) {
     const r = question.userResponse;
     if (r) {
+      // Priority order: responseText first, then selectedOption text, then responseNumber
       if (r.responseText) {
         responses[question.id] = r.responseText;
       } else if (r.selectedOptionId != null) {
+        // Fallback to option text if no responseText was saved
         const opt = question.questionOptions.find(o => o.id === r.selectedOptionId);
         responses[question.id] = opt?.text ?? r.selectedOptionId;
       } else if (r.responseNumber != null) {
         responses[question.id] = r.responseNumber;
       }
     }
-    // children too
+    
+    // Handle children too
     for (const child of question.children ?? []) {
       const cr = child.userResponse;
       if (cr) {
         if (cr.responseText) {
           responses[child.id] = cr.responseText;
+        } else if (cr.selectedOptionId != null) {
+          const opt = child.questionOptions.find(o => o.id === cr.selectedOptionId);
+          responses[child.id] = opt?.text ?? cr.selectedOptionId;
         } else if (cr.responseNumber != null) {
           responses[child.id] = cr.responseNumber;
         }
