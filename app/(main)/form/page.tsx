@@ -29,7 +29,7 @@ const FormPage = async () => {
     const spins = userProgressInfo?.spins ?? 0;
 
     return(
-        <div className="flex flex-row-reverse gap-[48px] px-6">
+        <div className="z-10 flex flex-row-reverse gap-[48px] px-6">
             <StickyWrapper>
                 <UserProgress 
                     activeLevel={{ title: "Basic"}} 
