@@ -6,7 +6,23 @@ export const userProgress = pgTable("user_progress", {
   userName: text("user_name").notNull().default("User"),
   userImageSrc: text("user_image_src").notNull().default("/logo.svg"),
   points: integer("points").notNull().default(0),
+  spins: integer("spins").notNull().default(5),
+  activeLevelId: integer("active_level_id").references(() => levels.id),
+  activeSublevelId: integer("active_sublevel_id").references(() => sublevels.id),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
 });
+
+export const userProgressRelations = relations(userProgress, ({one}) => ({
+  activeLevel: one(levels, {
+    fields: [userProgress.activeLevelId],
+    references: [levels.id]
+  }),
+  activeSublevel: one(sublevels, {
+    fields: [userProgress.activeSublevelId],
+    references: [sublevels.id]
+  })
+}));
 
 export const levels = pgTable("levels", {
     id: serial("id").primaryKey(),
@@ -120,6 +136,3 @@ export const userResponsesRelations = relations(userResponses, ({one}) => ({
         references: [questionOptions.id]
     })
 }));
-
-
-

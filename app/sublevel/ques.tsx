@@ -86,43 +86,91 @@ export const Ques = ({
     }
   };
 
+const updateUserPoints = async (pointsToAdd: number) => {
+  console.log("🎯 Attempting to update points:", pointsToAdd);
+  
+  try {
+    const res = await fetch("/api/update-points", {
+      method: "POST",
+      headers: { 
+        "Content-Type": "application/json",
+        // Add any additional headers if needed
+      },
+      body: JSON.stringify({ points: pointsToAdd }),
+    });
+
+    console.log("📡 Response status:", res.status);
+    console.log("📡 Response ok:", res.ok);
+    
+    if (!res.ok) {
+      const errorText = await res.text();
+      console.error("❌ Update points failed:", res.status, errorText);
+      throw new Error(`Failed to update points: ${res.status} - ${errorText}`);
+    }
+    
+    const data = await res.json();
+    console.log("✅ Points updated successfully:", data);
+    return data.newPoints;
+  } catch (e) {
+    console.error("❌ Failed to update points:", e);
+    // Don't throw the error, just log it and return null
+    // This prevents the UI from breaking if points update fails
+    return null;
+  }
+};
+
+// Updated handleNext function with better error handling
+const handleNext = async () => {
+  const val = answers[current.id];
+  if (val !== undefined) {
+    let optionId: number | undefined;
+    if (["SELECT", "YES_NO"].includes(current.type)) {
+      if (current.type === "SELECT" && typeof val === "number") optionId = val;
+      else if (current.type === "YES_NO") {
+        const o = current.questionOptions.find((o) => o.text === val);
+        optionId = o?.id;
+      }
+    }
+    await saveResponse(current.id, val, optionId);
+  }
+  
+  for (const c of current.children ?? []) {
+    const cv = answers[c.id];
+    if (cv !== undefined) await saveResponse(c.id, cv);
+  }
+  
+  const next = activeIndex + 1;
+  if (next < qs.length) {
+    setActiveIndex(next);
+    setPercentage(Math.round(((next + 1) / qs.length) * 100));
+  } else {
+    // Mark all questions in the sublevel as completed
+    for (const q of qs) {
+      await saveResponse(q.id, answers[q.id] || "", undefined);
+      for (const c of q.children ?? []) {
+        await saveResponse(c.id, answers[c.id] || "", undefined);
+      }
+    }
+    
+    // Award points for completing the sublevel
+    console.log("🏆 Sublevel completed, awarding points...");
+    const newPoints = await updateUserPoints(20);
+    
+    if (newPoints !== null) {
+      console.log("✅ Points awarded successfully. New total:", newPoints);
+    } else {
+      console.log("⚠️ Points update failed, but continuing...");
+    }
+    
+    setPercentage(100);
+    setShowModal(true);
+  }
+};
+
   const handleAnswer = (qid: number, val: string | number) => {
     setAnswers((a) => ({ ...a, [qid]: val }));
   };
 
-  const handleNext = async () => {
-    const val = answers[current.id];
-    if (val !== undefined) {
-      let optionId: number | undefined;
-      if (["SELECT", "YES_NO"].includes(current.type)) {
-        if (current.type === "SELECT" && typeof val === "number") optionId = val;
-        else if (current.type === "YES_NO") {
-          const o = current.questionOptions.find((o) => o.text === val);
-          optionId = o?.id;
-        }
-      }
-      await saveResponse(current.id, val, optionId);
-    }
-    for (const c of current.children ?? []) {
-      const cv = answers[c.id];
-      if (cv !== undefined) await saveResponse(c.id, cv);
-    }
-    const next = activeIndex + 1;
-    if (next < qs.length) {
-      setActiveIndex(next);
-      setPercentage(Math.round(((next + 1) / qs.length) * 100));
-    } else {
-      // Mark all questions in the sublevel as completed
-      for (const q of qs) {
-        await saveResponse(q.id, answers[q.id] || "", undefined);
-        for (const c of q.children ?? []) {
-          await saveResponse(c.id, answers[c.id] || "", undefined);
-        }
-      }
-      setPercentage(100);
-      setShowModal(true);
-    }
-  };
 
   const handlePrevious = () => {
     if (activeIndex === 0) return;
@@ -283,7 +331,7 @@ const handleDownload = async () => {
               <>
                 <h2 className="text-2xl font-bold mb-4">Congratulations!</h2>
                 <p className="mb-6">
-                  You have earned <span className="font-semibold">10 points</span>!
+                  You have earned <span className="font-semibold">20 points</span>!
                 </p>
                 <Button onClick={handleContinue}>Continue</Button>
               </>
@@ -294,6 +342,3 @@ const handleDownload = async () => {
     </>
   );
 };
-
-
-

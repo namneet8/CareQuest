@@ -1,6 +1,6 @@
 import { cache } from "react";
 import db from "@/db/drizzle";
-import { levels, sublevels, questions, questionProgress, userResponses, questionOptions } from "./schema";
+import { levels, sublevels, questions, questionProgress, userResponses, questionOptions, userProgress } from "./schema";
 import { auth } from "@clerk/nextjs/server";
 import { eq, and } from "drizzle-orm";
 
@@ -442,45 +442,37 @@ export const saveUserResponse = async (
 
   return { success: true };
 };
-export const getUserResponses = async (sublevelId: number) => {
+export const getUserProgress = cache(async () => {
+  const { userId } =  await auth();
+
+  if (!userId) return null;
+
+  const data = await db.query.userProgress.findFirst({
+    where: eq(userProgress.userId, userId),
+    columns: {
+      points: true,
+      spins: true,
+      activeLevelId: true,
+      activeSublevelId: true,
+    },
+  });
+
+  return data;
+});
+
+// Alternative function if you want to keep getUserPoints separate
+export const getUserPoints = cache(async () => {
   const { userId } = await auth();
-  if (!userId) return {};
 
-  const sublevel = await getSublevel(sublevelId);
-  if (!sublevel) return {};
+  if (!userId) return null;
 
-  const responses: Record<number, string | number> = {};
+  const data = await db.query.userProgress.findFirst({
+    where: eq(userProgress.userId, userId),
+    columns: {
+      points: true,
+      spins: true,
+    },
+  });
 
-  for (const question of sublevel.questions) {
-    const r = question.userResponse;
-    if (r) {
-      // Priority order: responseText first, then selectedOption text, then responseNumber
-      if (r.responseText) {
-        responses[question.id] = r.responseText;
-      } else if (r.selectedOptionId != null) {
-        // Fallback to option text if no responseText was saved
-        const opt = question.questionOptions.find(o => o.id === r.selectedOptionId);
-        responses[question.id] = opt?.text ?? r.selectedOptionId;
-      } else if (r.responseNumber != null) {
-        responses[question.id] = r.responseNumber;
-      }
-    }
-    
-    // Handle children too
-    for (const child of question.children ?? []) {
-      const cr = child.userResponse;
-      if (cr) {
-        if (cr.responseText) {
-          responses[child.id] = cr.responseText;
-        } else if (cr.selectedOptionId != null) {
-          const opt = child.questionOptions.find(o => o.id === cr.selectedOptionId);
-          responses[child.id] = opt?.text ?? cr.selectedOptionId;
-        } else if (cr.responseNumber != null) {
-          responses[child.id] = cr.responseNumber;
-        }
-      }
-    }
-  }
-
-  return responses;
-};
+  return data;
+});
