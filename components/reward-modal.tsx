@@ -40,7 +40,7 @@ export const RewardModal = ({ open, onClose, reward }: RewardModalProps) => {
     
     if (lowerReward.includes("10% discount") || lowerReward.includes("10%")) {
       return {
-        image: "/discount-10.png", // You'll need to add this image to your public folder
+        image: "/10-percent.png", // You'll need to add this image to your public folder
         title: "10% Discount",
         description: "Save 10% on your next purchase!"
       };

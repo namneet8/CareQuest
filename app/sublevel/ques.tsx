@@ -438,13 +438,13 @@ export const Ques = ({
           <div className="mb-6 flex justify-center">
             <div className="relative">
               <Image
-                src="/reward-generic.png"
+                src="/sad-unscreen.gif"
                 width={120}
                 height={120}
                 alt="Skip Question"
                 className="rounded-xl shadow-lg"
                 onError={(e) => {
-                  e.currentTarget.src = "/reward-generic.png";
+                  e.currentTarget.src = "/sad-unscreen.gif";
                 }}
               />
               <div className="absolute -top-2 -right-2 text-2xl animate-bounce">✨</div>
