@@ -194,9 +194,9 @@ const HospitalDoodleBackground = () => {
   return (
     <div className="fixed inset-0 pointer-events-none z-[-10] overflow-hidden lg:left-[256px]">
       {/* Floating Medical Icons */}
-      <DoodleIcon className="top-12 left-12" delay={0} floating interactive id="hospital1">
+      {/* <DoodleIcon className="top-12 left-12" delay={0} floating interactive id="hospital1">
         <HospitalBuilding color="#ff6b9d" />
-      </DoodleIcon>
+      </DoodleIcon> */}
 
       <DoodleIcon className="top-1/4 right-20" delay={1.5} floating interactive id="stethoscope1">
         <Stethoscope color="#4ecdc4" />
@@ -218,9 +218,9 @@ const HospitalDoodleBackground = () => {
         <DoodleHeart color="#ff6b9d" beat />
       </DoodleIcon>
 
-      <DoodleIcon className="bottom-1/4 left-1/3" delay={1.8} floating interactive id="hospital2">
+      {/* <DoodleIcon className="bottom-1/4 left-1/3" delay={1.8} floating interactive id="hospital2">
         <HospitalBuilding color="#4ecdc4" size={100} />
-      </DoodleIcon>
+      </DoodleIcon> */}
 
       {/* Static Background Patterns */}
       <MedicalPattern x="5%" y="60%" rotation={15} />

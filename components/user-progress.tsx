@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import Image from "next/image";
@@ -27,6 +27,26 @@ export const UserProgress = ({
   const [isSpinModalOpen, setIsSpinModalOpen] = useState(false);
   const [isRewardModalOpen, setIsRewardModalOpen] = useState(false);
   const [currentReward, setCurrentReward] = useState<string>("");
+  const [currentMessageIndex, setCurrentMessageIndex] = useState(0);
+
+  const motivationalMessages = [
+    "Keep going, you're almost at the next spin!",
+    "You're doing awesome, keep earning those points!",
+    "Spin that wheel, champion!",
+    "Every point brings you closer to great rewards!",
+    "You're on fire! Let's get that next level!",
+  ];
+
+  // Cycle through messages every 8 seconds
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setCurrentMessageIndex((prevIndex) => 
+        (prevIndex + 1) % motivationalMessages.length
+      );
+    }, 8000);
+
+    return () => clearInterval(interval);
+  }, []);
 
   const handleOpenSpinModal = () => {
     if (isSpinAvailable) {
@@ -38,18 +58,14 @@ export const UserProgress = ({
     setIsSpinModalOpen(false);
     setCurrentReward(reward);
     
-    // If user gets "Try Again", don't show reward modal and don't deduct spin
     if (reward.toLowerCase().includes("try again")) {
       alert("Better luck next time!");
       return;
     }
 
-    // Show reward modal for actual rewards
     setIsRewardModalOpen(true);
     
-    // TODO: Implement backend logic to deduct spin and save reward
     try {
-      // Example API call to deduct spin and save reward
       const response = await fetch("/api/use-spin", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -58,11 +74,9 @@ export const UserProgress = ({
       
       if (!response.ok) {
         console.error("Failed to process reward");
-        // Still show the reward modal even if backend fails
       }
     } catch (error) {
       console.error("Error using spin:", error);
-      // Still show the reward modal even if backend fails
     }
   };
 
@@ -73,13 +87,12 @@ export const UserProgress = ({
   const handleCloseRewardModal = () => {
     setIsRewardModalOpen(false);
     setCurrentReward("");
-    // Refresh the page to update spin count after reward modal closes
     window.location.reload();
   };
 
   return (
     <>
-      <div className="flex flex-col gap-4 items-center justify-center p-6 bg-white rounded-xl shadow-md h-[60vh]">
+      <div className="flex flex-col gap-4 items-center justify-between p-6 bg-white rounded-xl shadow-md h-[60vh]">
         {/* Level Title */}
         <div className="text-2xl font-bold">Unlock Spin Wheel,</div>
         <div className="text-2xl font-bold mb-4">Unlock lucky deals</div>
@@ -105,8 +118,8 @@ export const UserProgress = ({
           </div>
         </div>
 
-        {/* Spins Section */}
-        <div className="flex flex-col items-center mt-4">
+        {/* Spins Section with Mascot and Message Bubble */}
+        <div className="flex flex-col items-center mt-1 mb-5 ">
           <button
             disabled={!isSpinAvailable}
             onClick={handleOpenSpinModal}
@@ -138,6 +151,23 @@ export const UserProgress = ({
               Complete more sublevels to earn spins!
             </p>
           )}
+          {/* Mascot and Message Bubble */}
+          <div className="flex items-end gap-4 mt-10">
+            <Image
+              src="/teddyHI.gif"
+              height={100}
+              width={100}
+              alt="Mascot"
+              className="object-contain"
+            />
+            <div className="relative max-w-[280px]">
+              <div className="bg-white text-gray-800 p-5 rounded-2xl shadow-xl border border-gray-200 text-base font-medium leading-relaxed transition-opacity duration-500">
+                {motivationalMessages[currentMessageIndex]}
+              </div>
+              {/* Speech bubble tail */}
+              <div className="absolute -left-4 top-1/2 w-0 h-0 border-t-12 border-t-transparent border-r-12 border-r-white border-b-12 border-b-transparent shadow-sm" />
+            </div>
+          </div>
         </div>
       </div>
 
